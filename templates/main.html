@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<form action="/generate" method="POST">
+<CENTER><H1><FONT COLOR="0000AA">HPC-T-Assembly</FONT></H1></CENTER>
+
+ <fieldset>
+  <legend><B><FONT COLOR="0000AA">HPC Setting</FONT></B></legend>
+<BR>
+	<TABLE>
+	<TR><TD><B>Nodes</B></TD><TD><input type="text" id="nodes" name="nodes" value="1"></TD></TR>
+	<TR><TD><B>Threads</B></TD><TD><input type="text" id="threads" name="threads" value="48"></TD></TR>
+	<TR><TD><B>Memory</B></TD><TD><input type="text" id="memory" name="memory" value="360GB"></TD></TR>
+	<TR><TD><B>Account</B></TD><TD><input type="text" id="account" name="account" required></TD></TR>
+	<TR><TD><B>Time</B></TD><TD><input type="text" id="time" name="time" value="24:00:00"></TD></TR>
+	<TR><TD><B>Partition name:</B></TD><TD><input type="text" id="p_flag" name="p_flag" required></TD></TR>
+	<TR><TD><B>Additional setting:</B></TD><TD><textarea id="other_configurations" name="other_configurations"rows="4" cols="50"></textarea></TD></TR>
+	<TR><TD></TD><TD></TD></TR>
+	<TR><TD><B>Would you like to uninstall the installed programs after completion?</B></TD><TD><select id="Delete" name="Delete"><option value="true">TRUE</option><option value="false">FALSE</option></select></TD>
+	</TABLE>
+</fieldset>
+
+<BR>
+
+ <fieldset>
+  <legend><B><FONT COLOR="0000AA">General Setting</FONT></B></legend>
+	<input type="checkbox" id="toggle1" />
+    	<label for="toggle1" class="custom-checkbox"><B>Trimming</B></label>
+    		<ul class="hidden">   
+		<BR>     
+        	Fastp is a tool used for the quality control and preprocessing of raw sequence data.  
+		<BR><BR>
+		<TABLE>
+		<TR><TD><B>Additional FASTP setting:</B></TD><TD><textarea id="fastp_additional_configurations" name="fastp_additional_configurations" rows="4" cols="50">-j {leftio}_fastp.json -h {leftio}_fastp.html # Additional fastp options</textarea></TD>
+		</TABLE>
+		</ul>
+<BR>
+
+    	<input type="checkbox" id="toggle2" />
+    	<label for="toggle2" class="custom-checkbox"><B>Assembly</B></label>
+    		<ul class="hidden">
+		<BR>
+		SPADES is a tool for de novo transcriptome assembly from RNA-Seq data and is suitable for all kind of organisms.
+		<BR><BR>
+		<TABLE>
+		<TR><TD><B>Additional SPADES setting:</B></TD><TD><textarea id="assembly_additional_configurations" name="assembly_additional_configurations" rows="6" cols="50">
+--dataset fastq_files.yaml --tmp-dir ASSEMBLY/TMP_SPADE/
+# Additional Spades options
+--only-assembler; cp ASSEMBLY/RNA-Spades/transcripts.fasta .</textarea></TD>
+		</TABLE>
+		</ul>
+
+
+<BR>
+
+    	<input type="checkbox" id="toggle3" />
+    	<label for="toggle3" class="custom-checkbox"><B>Clustering</B></label>
+    		<ul class="hidden">
+		<BR>
+		CD-HIT was originally a protein clustering program.
+		<BR><BR>
+		<TABLE>
+		<TR><TD><B>Additional CD-HIT setting:</B></TD><TD><textarea id="cdhit_additional_configurations" name="cdhit_additional_configurations" rows="6" cols="50">-c 0.95 -n 10 -M 1600 </textarea></TD>
+		</TABLE>
+		</ul>
+	
+<BR>
+    	<input type="checkbox" id="toggle4" />
+    	<label for="toggle4" class="custom-checkbox"><B>De novo trascriptome generator</B></label>
+    		<ul class="hidden">
+		<BR>
+		Corset is a command-line program to go from a de novo transcriptome assembly to gene-level counts.
+		<BR><BR>
+		<TABLE>
+		<TR><TD><B>Additional Corset setting:</B></TD><TD><textarea id="Corset_additional_configurations" name="Corset_additional_configurations" rows="4" cols="50"></textarea></TD>
+		</TABLE>
+		</ul>
+
+<BR>
+    	<input type="checkbox" id="toggle5" />
+    	<label for="toggle5" class="custom-checkbox"><B>Alignment</B></label>
+    		<ul class="hidden">
+		<BR>
+		HISAT2 is a alignment program for mapping next-generation sequencing reads (both DNA and RNA) to a population of human genomes as well as to a single reference genome.
+		<BR><BR>
+		<TABLE>
+		<TR><TD><B>Additional HISAT2 setting:</B></TD><TD><textarea id="hisat2_additional_configurations" name="hisat2_additional_configurations" rows="4" cols="50"></textarea></TD>
+		</TABLE>
+		</ul>
+
+
+<BR>
+    	<input type="checkbox" id="toggle6" />
+    	<label for="toggle6" class="custom-checkbox"><B>Statistics</B></label>
+    		<ul class="hidden">
+		<BR>
+		Trinity toolkit is a utilities for computing contig Nx statistics (eg. the contig N50 value)
+		</ul>
+
+
+<BR>
+    	<input type="checkbox" id="toggle7" />
+    	<label for="toggle7" class="custom-checkbox"><B>Quants producing</B></label>
+    		<ul class="hidden">
+		<BR>
+		Salmon is a wicked-fast program to produce a highly-accurate, transcript-level quantification estimates from RNA-seq data. Salmon achieves its accuracy and speed via a number of different innovations, including the use of selective-alignment (accurate but fast-to-compute proxies for traditional read alignments), and massively-parallel stochastic collapsed variational inference.
+		<BR><BR>
+		<TABLE>
+		<TR><TD><B>Additional Salmon setting:</B></TD><TD><textarea id="salmon_additional_configurations" name="salmon_additional_configurations" rows="6" cols="50">
+--dumpEq 
+--output RNA_SALMON_{ID}</textarea></TD>
+		</TABLE>
+		</ul>
+<BR>
+    	<input type="checkbox" id="toggle8" />
+    	<label for="toggle8" class="custom-checkbox"><B>Prediction ORFs</B></label>
+    		<ul class="hidden">
+		<BR>
+TransDecoder identifies candidate coding regions within transcript sequences, such as those generated by de novo RNA-Seq transcript assembly using Trinity, or constructed based on RNA-Seq alignments to the genome using StringTie.
+		<BR><BR>
+		<TABLE>
+		<TR><TD><B>Execute request:</B></TD><TD><select id="ORFs" name="ORFs"><option value="true">TRUE</option><option value="false">FALSE</option></select></TD>
+		</TABLE>
+		</ul>
+<BR>
+	</fieldset>
+	
+<BR>
+<CENTER><button type="submit" class="submit-button">SEND</button></CENTER>
+<!--<input type="submit" value="Generate File">-->
+</form>
