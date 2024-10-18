@@ -1,0 +1,97 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background-image: url('back.jpg'); /* Inserisci il percorso della tua immagine */
+  background-repeat: no-repeat; /* Non ripetere l'immagine */
+
+  background-position: top-center; /* Posiziona l'immagine centrata in alto */
+}
+
+h1 {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.container {
+  display: flex;
+  border: 1px solid #ccc;
+  margin: 20px;
+  padding: 20px;
+}
+
+fieldset {
+background-color: rgba(255, 255, 255, 0.75);
+  padding: 20px; /* Aggiunge un po' di spazio interno */
+  border: 1px solid #ccc; /* Bordo del fieldset */
+  border-radius: 5px; /* Angoli arrotondati (opzionale) */
+}
+
+legend {
+background-color: rgba(255, 255, 255, 0.75);
+  padding: 20px; /* Aggiunge un po' di spazio interno */
+  border: 1px solid #ccc; /* Bordo del fieldset */
+  border-radius: 5px; /* Angoli arrotondati (opzionale) */
+}
+
+
+/* Nascondi la checkbox */
+input[type="checkbox"] {
+  display: none;
+}
+
+
+/* Stile personalizzato per la checkbox */
+.custom-checkbox {
+  position: relative;
+  padding-left: 30px;
+  cursor: pointer;
+}
+
+/* Utilizza un'icona da FontAwesome o un'immagine come sfondo */
+.custom-checkbox::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 20px; /* Dimensione dell'icona o immagine */
+  height: 20px;
+  background-image: url('unchecked.png'); /* Immagine non selezionata */
+  background-size: cover;
+}
+
+/* Cambia immagine o icona quando la checkbox è selezionata */
+input[type="checkbox"]:checked + .custom-checkbox::before {
+  background-image: url('checked.png'); /* Immagine selezionata */
+}
+
+/* Nascondi le sottoliste all'inizio */
+.hidden {
+  display: none;
+}
+
+/* Mostra la sottolista quando il checkbox è selezionato */
+input[type="checkbox"]:checked + .custom-checkbox + .hidden {
+  display: block;
+}
+
+
+.submit-button {
+  background-color: #0000ff; /* Sfondo azzurro */
+  color: #ffffff; /* Testo bianco */
+  border: none; /* Nessun bordo */
+  padding: 10px 20px; /* Spaziatura interna */
+  font-size: 16px; /* Dimensione del testo */
+  cursor: pointer; /* Cambia il cursore a "pointer" */
+  border-radius: 5px; /* Angoli arrotondati */
+  transition: background-color 0.3s ease; /* Transizione fluida per il cambio di colore */
+}
+
+/* Quando si passa sopra con il mouse */
+.submit-button:hover {
+  background-color: #ffff00; /* Cambia colore sfondo a verde */
+}
