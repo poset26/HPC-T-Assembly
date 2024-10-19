@@ -1,6 +1,6 @@
 ## HPC_T_Assembly
 ### Overview
- This script automates a high-performance computing (HPC) pipeline for RNA sequencing data analysis. It includes steps for data trimming, assembly, alignment, quantification, and clustering. The script is designed to handle paired-end RNA-seq data and generate several intermediate and final output files necessary for downstream analyses.
+ This script automates a high-performance computing (HPC) pipeline for RNA sequencing data analysis. It includes steps for data trimming, assembly, alignment, quantification, clustering, ORF predictions, and Transcript statistics. The script is designed to handle paired-end RNA-seq data and generate the intermediate and final output files necessary for downstream analyses. 
 
 ### Prerequisites
 
@@ -39,6 +39,38 @@
 8. Launch HPC_T_Assembly.py
 
     `python HPC_T_Assembly.py`
+
+
+## Output Multiple species mode
+* Specie1(Name)
+  - Single Specie Output
+* Specie2(Name)
+  - Single Specie Output  
+* .
+* SpecieN(Name)
+  - Single Specie Output
+
+ ## Single Specie Output
+ * Intermediate_Files
+    - ASSEMBLY
+    - Config
+    - CorsetOutput
+    - Data
+    - FastP
+    - Hisat2
+    - Salmon
+    - Scripts
+    - slurmerr
+    - slurmout 
+ * ORF
+ * Statistics
+    - cdhitstats.txt
+    - corsetstats.txt
+    - spadestats.txt
+ * Transcripts
+    - transcripts_Corset.fasta
+    - transcripts_cdhit.fasta
+    - transcripts_rnaspades.fasta
 
 ## Code Breakdown
 The main script is HPC_T_Assembly.py, it's a python code that takes the parameters set in the configuration site and generates the bash scripts for each step of the pipeline.
