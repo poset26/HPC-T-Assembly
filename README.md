@@ -2,6 +2,9 @@
 ### Overview
  This script automates a high-performance computing (HPC) pipeline for RNA sequencing data analysis. It includes steps for data trimming, assembly, alignment, quantification, clustering, ORF predictions, and Transcript statistics. The script is designed to handle paired-end RNA-seq data and generate the intermediate and final output files necessary for downstream analyses. 
 
+![IMG_20240910_001739_590](https://github.com/user-attachments/assets/dd8b4106-7200-4427-83ea-2c21c96859ac)
+
+
 ### Prerequisites
 
 #### Web Interface
@@ -39,6 +42,11 @@
 8. Launch HPC_T_Assembly.py
 
     `python HPC_T_Assembly.py`
+
+
+## Multiple Species Workflow
+
+![IMG_20240910_001739_623](https://github.com/user-attachments/assets/f81c55df-6169-4367-ab84-b55bc3d942d4)
 
 
 ## Output Multiple species mode
