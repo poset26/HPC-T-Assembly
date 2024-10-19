@@ -49,7 +49,7 @@
 ![IMG_20240910_001739_623](https://github.com/user-attachments/assets/f81c55df-6169-4367-ab84-b55bc3d942d4)
 
 ### Execution for Multiple Species
-* As shown in the previous grafic, when running the software for multiple species, a separate folder is created for each species, and the pipeline is executed in parallel within these folders.
+* As shown in the previous graphic, when running the software for multiple species, a separate folder is created for each species, and the pipeline is executed in parallel within these folders.
 
 ### Execution for Single Species
 The execution of the pipeline for a single specie proceeds as follows:
