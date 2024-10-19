@@ -2,6 +2,16 @@
 ### Overview
  This script automates a high-performance computing (HPC) pipeline for RNA sequencing data analysis. It includes steps for data trimming, assembly, alignment, quantification, and clustering. The script is designed to handle paired-end RNA-seq data and generate several intermediate and final output files necessary for downstream analyses.
 
+### Prerequisites
+
+#### Web Interface
+* Python3
+* Flask
+
+#### Main Code
+* Slurm
+* Python3
+
 ### USE
 1. Install flask
 
