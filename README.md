@@ -40,7 +40,7 @@
 
     `python HPC_T_Assembly.py`
 
-## Code
+## Code Breakdown
 The main script is HPC_T_Assembly.py, it's a python code that takes the parameters set in the configuration site and generates the bash scripts for each step of the pipeline.
 
 Main functions:
