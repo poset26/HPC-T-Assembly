@@ -107,7 +107,7 @@ Main functions:
      * If multiple species are present, it generates separate folders for each species and creates an instance of the pipeline inside each folder to run them in parallel.
    * If a single species is present:
      * Processes the HPC_T_Assembly_Data.txt file to get read paths.
-     * Generates the main assembly pipeline script pipeline.sh using these read paths and configuration files. This script includes steps for:
+     * Generates the main assembly pipeline scripts using these read paths and configuration files. This script includes steps for:
        * Fastq trimming with fastp.
        * Assembly with SPAdes.
        * Statistics with Trinity Stats.
@@ -115,8 +115,7 @@ Main functions:
        * Quantification with Salmon.
        * Transcript functional annotation with Corset.
        * Open reading frame (ORF) prediction with TransDecoder.
-     * Generates scripts for individual analysis steps like Salmon indexing, Salmon quantification, Corset analysis, Hisat2 alignment, and TransDecoder prediction.
-     * Generates a cleanup script cleanup.sh to organize the output files and remove temporary files.
+ 
  * cleanup(): This function creates a cleanup script that organizes output files, moves them to designated directories, and removes temporary files.
  * install_missing(name=None, instlist=None): This function is used to install required software tools from a predefined list based on their names or a provided list (in case some software didn't install correctly). It downloads and compiles the software from public repositories.
  * getsbatch(configf): This function retrieves the SLURM batch configuration (memory, time, etc.) from a specified configuration file.
