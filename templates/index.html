@@ -7,9 +7,12 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-<CENTER><H1><FONT COLOR="0000AA">HPC-T-Assembly</FONT></H1></CENTER>
-
+  <br></br>
+  <br></br>
+  <br></br>
+  <br></br>   
+  <br></br>
+  <br></br>
  <fieldset>
   <legend><B><FONT COLOR="0000AA">Introduction</FONT></B></legend>
 
@@ -29,7 +32,7 @@
     <li>Salmon builds the index and transcript quantifiers that will be used in Corset to generate its transcripts.</li>
     <li>Corset is launched as a single threaded process and its corresponding transcripts are generated.</li>
     <li>After all the transcripts are generated a single threaded process of trinity stats is launched per each transcript (Spades, CD-HIT, Corset).</li>
-    <li>Hisat builds an index and then proceeds to align the reads. (Runs parallel to step 6)</li>
+    <li>Bowtie builds an index and then proceeds to align the reads. (Runs parallel to step 6)</li>
     <li>TransDecoder followed by TransDecoder.predict are launched to identify the candidate coding regions within the transcripted sequences.</li>
     <li>An initial cleanup script organizes the output into 4 folders: Transcripts, ORF, Statistics, Intermediate_Files.</li>
     <li>A final script eliminates the downloaded software that was required for the execution of the pipeline.</li>

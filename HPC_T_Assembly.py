@@ -189,29 +189,29 @@ def mainhpc(threads):
         f.write(getcommand("Config/Corset2transcript.config.txt").format(**locals()))
 
     # Final Statistics
-    # HiSat2
+    # Bowtie2
     # idxfasta = "transcripts_corset.fasta"
     # idxname = "Index"
-    # index = f"{reqd['hisat2']}/hisat2-build {idxfasta} {idxname}"
-    index = getcommand("Config/hisat2index.config.txt").format(**locals())
-    hisat = []
+    # index = f"{reqd['bowtie2']}/bowtie2-build {idxfasta} {idxname}"
+    index = getcommand("Config/bowtie2index.config.txt").format(**locals())
+    bowtie = []
     for x, y in zip(lreads, rreads):
         ID = x.split("_cleaned.fastq")[0].split("/")[-1].split("_")[0]
-        # hisat.append(f'{reqd["hisat2"]}/hisat2 -p {threadsperrun} --dta -q -x Index -1 {x} -2 {y} -S {x.split("_cleaned.fastq")[0].split("/")[-1].split("_")[0]}.sam > {x.split("_cleaned.fastq")[0].split("/")[-1].split("_")[0]}.txt')
-        hisat.append(getcommand("Config/hisat2.config.txt").format(**locals()))
+        
+        bowtie.append(getcommand("Config/bowtie2.config.txt").format(**locals()))
 
-    with open("hisatindex.sh", "w") as f:
+    with open("bowtieindex.sh", "w") as f:
         f.write("#!/bin/bash\n")
-        f.write(getsbatch("Config/hisat2index.config.txt"))
+        f.write(getsbatch("Config/bowtie2index.config.txt"))
         f.write(f'cd {gc()}\n')
         f.write(index)
-        # f.write(" &\n".join(hisat))
+        # f.write(" &\n".join(bowtie))
 
-    with open("hisat2.sh", "w") as f:
+    with open("bowtie2.sh", "w") as f:
         f.write("#!/bin/bash\n")
-        f.write(getsbatch("Config/hisat2.config.txt"))
+        f.write(getsbatch("Config/bowtie2.config.txt"))
         f.write(f'cd {gc()}\n')
-        f.write(" &\n".join(hisat))
+        f.write(" &\n".join(bowtie))
 
     # ORF Predictions
 
@@ -294,7 +294,7 @@ def getreqs():
     Corset-tools
     SPAdes
     fastp
-    hisat2
+    bowtie
     TransDecoder-
     """.split()
     mr = reqs
@@ -339,8 +339,8 @@ mv *.out slurmout
 mkdir Salmon
 mv -f RNA_SALMON* Salmon
 
-mkdir Hisat2
-mv *.sam Hisat2
+mkdir bowtie2
+mv *.sam bowtie2
 
 rm r.txt
 rm SRR*.txt
@@ -370,6 +370,8 @@ rm paths.txt
 mkdir slurmerr
 mv *.err slurmerr
 
+mkdir Bowtie2Output 
+mv log_*.txt Bowtie2Output
 mkdir Transcripts
 mv transcripts_cdhit.fasta Transcripts
 cp transcripts_Corset.fasta Transcripts
@@ -387,6 +389,7 @@ def install_missing(name = None, instlist = None): # Install required software
 
     installation_instructions = {
         'trinityrnaseq': '\ngit clone https://github.com/trinityrnaseq/trinityrnaseq.git\ncd trinityrnaseq\nmake\nmake plugins\ncd ..\n',
+        'bowtie': '\nconda install bowtie2\nwget https://sourceforge.net/projects/bowtie-bio/files/latest/download -O bowtie.zip\nunzip bowtie.zip\ncd bowtie\ncmake . -D USE_SRA=1 -D USE_SAIS=1 && cmake --build .\n',
         'salmon': '\nwget https://github.com/COMBINE-lab/salmon/releases/download/v1.10.0/salmon-1.10.0_linux_x86_64.tar.gz\ntar -zxvf salmon-1.10.0_linux_x86_64.tar.gz\n',
         'samtools': '\ngit clone https://github.com/samtools/samtools.git\ncd samtools\n./configure\nmake\nmake install\ncd ..\n',
         'cdhit': '\ngit clone https://github.com/weizhongli/cdhit.git\ncd cdhit\nmake\ncd cd-hit-auxtools\nmake\ncd ..\ncd ..\n',
@@ -394,7 +397,7 @@ def install_missing(name = None, instlist = None): # Install required software
         'Corset-tools': '\ngit clone https://github.com/Adamtaranto/Corset-tools.git\n',
         'SPAdes': '\nwget https://github.com/ablab/spades/releases/download/v4.0.0/SPAdes-4.0.0-Linux.tar.gz\ntar -zxvf SPAdes-4.0.0-Linux.tar.gz\n',
         'fastp': '\nwget http://opengene.org/fastp/fastp\nchmod +x fastp\nmkdir fastp1\nmv fastp fastp1\nmv fastp1 fastp\n',
-        'hisat2': '\nwget https://cloud.biohpc.swmed.edu/index.php/s/oTtGWbWjaxsQ2Ho/download\nunzip download\n\n',
+        'busco': '\ngit clone https://gitlab.com/ezlab/busco.git\ncd busco/\npython -m pip install .\npip install pandas\npip install requests\npip install biopython\nwget https://sourceforge.net/projects/bbmap/files/latest/download\ntar -zxvf download\nexporth PATH=$(pwd)/bbmap\nwget https://mmseqs.com/metaeuk/metaeuk-linux-avx2.tar.gz; tar xzvf metaeuk-linux-avx2.tar.gz; export PATH=$(pwd)/metaeuk/bin/:$PATH\n',
         'TransDecoder-': '\ncurl -L https://cpanmin.us | perl - App::cpanminus\ncpanm install DB_Filea\ncpanm install URI::Escape\nwget https://github.com/TransDecoder/TransDecoder/archive/refs/tags/TransDecoder-v5.7.1.zip\nunzip TransDecoder-v5.7.1.zip\n'}
     mr = list(installation_instructions.keys()) if instlist == None else instlist
     if name:
@@ -494,7 +497,7 @@ if __name__ == "__main__":
     with open("Processes.txt", "w") as f:
         f.write("Script | Number of Processes\n")
         f.write(
-            f"pipeline.sh | {lenleft}\nassembly.sh | 1\nsalmonidx.sh | 1\nsalmon.sh | {lenleft}\nsalmonpos.sh | {lenleft}\ncorset.sh | 1\ncorset2transcript.sh | 1\nhisatindex.sh | 1\nhisat2.sh | {lenleft}\ntrasdecoder.sh | 1\ntransdecoder_predict.sh | 1\n")
+            f"pipeline.sh | {lenleft}\nassembly.sh | 1\nsalmonidx.sh | 1\nsalmon.sh | {lenleft}\nsalmonpos.sh | {lenleft}\ncorset.sh | 1\ncorset2transcript.sh | 1\nbowtieindex.sh | 1\nbowtie2.sh | {lenleft}\ntrasdecoder.sh | 1\ntransdecoder_predict.sh | 1\n")
     cleanup()
     from os import sched_getaffinity as threadcounter
 

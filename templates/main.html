@@ -8,21 +8,25 @@
 </head>
 <body>
 <form action="/generate" method="POST">
-<CENTER><H1><FONT COLOR="0000AA">HPC-T-Assembly</FONT></H1></CENTER>
-
+	<br></br>
+	<br></br>
+	<br></br>
+	<br></br>   
+	<br></br>
+	<br></br>
  <fieldset>
   <legend><B><FONT COLOR="0000AA">HPC Setting</FONT></B></legend>
 <BR>
 	<TABLE>
-	<TR><TD><B>Nodes</B></TD><TD><input type="text" id="nodes" name="nodes" value="1"></TD></TR>
-	<TR><TD><B>Threads</B></TD><TD><input type="text" id="threads" name="threads" value="48"></TD></TR>
-	<TR><TD><B>Memory</B></TD><TD><input type="text" id="memory" name="memory" value="360GB"></TD></TR>
-	<TR><TD><B>Account</B></TD><TD><input type="text" id="account" name="account" required></TD></TR>
-	<TR><TD><B>Time</B></TD><TD><input type="text" id="time" name="time" value="24:00:00"></TD></TR>
-	<TR><TD><B>Partition name:</B></TD><TD><input type="text" id="p_flag" name="p_flag" required></TD></TR>
-	<TR><TD><B>Additional setting:</B></TD><TD><textarea id="other_configurations" name="other_configurations"rows="4" cols="50"></textarea></TD></TR>
+	<TR><TD><B>Nodes</B></TD><TD>&nbsp;&nbsp;&nbsp;</TD><TD><input type="text" id="nodes" name="nodes" value="1"></TD></TR>
+	<TR><TD><B>Threads</B></TD><TD>&nbsp;&nbsp;&nbsp;</TD><TD><input type="text" id="threads" name="threads" value="48"></TD></TR>
+	<TR><TD><B>Memory</B></TD><TD>&nbsp;&nbsp;&nbsp;</TD><TD><input type="text" id="memory" name="memory" value="360GB"></TD></TR>
+	<TR><TD><B>Account</B></TD><TD>&nbsp;&nbsp;&nbsp;</TD><TD><input type="text" id="account" name="account" required></TD></TR>
+	<TR><TD><B>Time</B></TD><TD>&nbsp;&nbsp;&nbsp;</TD><TD><input type="text" id="time" name="time" value="24:00:00"></TD></TR>
+	<TR><TD><B>Partition name:</B></TD><TD>&nbsp;&nbsp;&nbsp;</TD><TD><input type="text" id="p_flag" name="p_flag" required></TD></TR>
+	<TR><TD><B>Additional setting:</B></TD><TD>&nbsp;&nbsp;&nbsp;</TD><TD><textarea id="other_configurations" name="other_configurations"rows="4" cols="50"></textarea></TD></TR>
 	<TR><TD></TD><TD></TD></TR>
-	<TR><TD><B>Would you like to uninstall the installed programs after completion?</B></TD><TD><select id="Delete" name="Delete"><option value="true">TRUE</option><option value="false">FALSE</option></select></TD>
+	<TR><TD><B>Would you like to uninstall the installed programs after completion?</B></TD><TD>&nbsp;&nbsp;&nbsp;</TD><TD><select id="Delete" name="Delete"><option value="true">TRUE</option><option value="false">FALSE</option></select></TD>
 	</TABLE>
 </fieldset>
 
@@ -87,10 +91,10 @@
     	<label for="toggle5" class="custom-checkbox"><B>Alignment</B></label>
     		<ul class="hidden">
 		<BR>
-		HISAT2 is a alignment program for mapping next-generation sequencing reads (both DNA and RNA) to a population of human genomes as well as to a single reference genome.
+		BOWTIE2 is a alignment program for mapping next-generation sequencing reads (both DNA and RNA) to a population of human genomes as well as to a single reference genome.
 		<BR><BR>
 		<TABLE>
-		<TR><TD><B>Additional HISAT2 setting:</B></TD><TD><textarea id="hisat2_additional_configurations" name="hisat2_additional_configurations" rows="4" cols="50"></textarea></TD>
+		<TR><TD><B>Additional BOWTIE2 setting:</B></TD><TD><textarea id="bowtie2_additional_configurations" name="bowtie2_additional_configurations" rows="4" cols="50"></textarea></TD>
 		</TABLE>
 		</ul>
 
