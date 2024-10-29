@@ -28,8 +28,16 @@
 * Corset-tools (installed using git)
 * SPAdes (installed using wget and tar)
 * fastp (installed using wget)
-* busco (installed using git, wget, tar, and pip)
-* transdecoder (installed using curl, perl, and wget)
+* busco (installed using git and pip)
+* Pandas (installes using pip)
+* Requests (installed using pip)
+* Biopython (installed using pip)
+* bbmap (installed using wget and tar)
+* metaeuk (installed using wget and tar)
+* transdecoder (installed using wget and unzip)
+* CPANminus (installed using curl)
+* DB_Filea (installed using cpanm)
+* URI::Escape (installed using cpanm)
 
 ## Installation
  1. Checkout the HPC-T-Assembly code:
