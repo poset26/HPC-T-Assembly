@@ -61,7 +61,7 @@ If python isnt alreadty installed in your system before going to step 1 you need
     
      `sudo apt update`
 
-     `sudo apt install python3`
+     `sudo apt install python3 python3-pip`
 
   * Fedora
 
