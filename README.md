@@ -113,7 +113,7 @@ The execution of the pipeline for a single specie proceeds as follows:
     - CorsetOutput
     - Data
     - FastP
-    - Hisat2
+    - Bowtie2
     - Salmon
     - Scripts
     - slurmerr
