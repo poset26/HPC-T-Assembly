@@ -40,10 +40,43 @@
 * URI::Escape (installed using cpanm)
 
 ## Installation
+
+If python isnt alreadty installed in your system before going to step 1 you need to install python. 
+
+### Python Installation
+
+#### MacOS
+
+  1. Go to `https://www.python.org/downloads/macos/` and download the latest installer package file (Stable Release) .
+  2. Double clicking on the ".pkg" file that was downloaded to your computer will open a graphical installation interface.
+  3. Press continue, accept the terms and conditions, and then press install.
+#### Windows
+  1. Go to `https://www.python.org/downloads/windows/` and download the latest stable release for windows.
+  2. Double click on the installation file.
+  3. Select the click box that says "Add Python to PATH" and then press Install Now.
+
+#### Linux
+  Python comes preinstalled on most linux distributions and comes as a package on all others.
+  * Ubuntu / Kali / Debian
+    
+     `sudo apt update`
+
+     `sudo apt install python3`
+
+  * Fedora
+
+    `sudo dnf upgrade --refresh`
+
+     `sudo dnf install python3`
+
+
+#### HPC-T-Assembly Installation
+The graphical interface only requires python3 and a python library called flask.
+
  1. Checkout the HPC-T-Assembly code:
     
       `git clone https://github.com/poset26/HPC-T-Assembly.git`
- 3. Install Flask
+ 2. Install Flask
 
      `pip install flask`
 
