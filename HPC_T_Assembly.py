@@ -389,7 +389,7 @@ def install_missing(name = None, instlist = None): # Install required software
 
     installation_instructions = {
         'trinityrnaseq': '\ngit clone https://github.com/trinityrnaseq/trinityrnaseq.git\ncd trinityrnaseq\nmake\nmake plugins\ncd ..\n',
-        'bowtie': '\nconda install bowtie2\nwget https://sourceforge.net/projects/bowtie-bio/files/latest/download -O bowtie.zip\nunzip bowtie.zip\ncd bowtie\ncmake . -D USE_SRA=1 -D USE_SAIS=1 && cmake --build .\n',
+        'bowtie': '\nwget https://sourceforge.net/projects/bowtie-bio/files/latest/download -O bowtie.zip\nunzip bowtie.zip\ncd bowtie\ncmake . -D USE_SRA=1 -D USE_SAIS=1 && cmake --build .\n',
         'salmon': '\nwget https://github.com/COMBINE-lab/salmon/releases/download/v1.10.0/salmon-1.10.0_linux_x86_64.tar.gz\ntar -zxvf salmon-1.10.0_linux_x86_64.tar.gz\n',
         'samtools': '\ngit clone https://github.com/samtools/samtools.git\ncd samtools\n./configure\nmake\nmake install\ncd ..\n',
         'cdhit': '\ngit clone https://github.com/weizhongli/cdhit.git\ncd cdhit\nmake\ncd cd-hit-auxtools\nmake\ncd ..\ncd ..\n',
@@ -397,7 +397,7 @@ def install_missing(name = None, instlist = None): # Install required software
         'Corset-tools': '\ngit clone https://github.com/Adamtaranto/Corset-tools.git\n',
         'SPAdes': '\nwget https://github.com/ablab/spades/releases/download/v4.0.0/SPAdes-4.0.0-Linux.tar.gz\ntar -zxvf SPAdes-4.0.0-Linux.tar.gz\n',
         'fastp': '\nwget http://opengene.org/fastp/fastp\nchmod +x fastp\nmkdir fastp1\nmv fastp fastp1\nmv fastp1 fastp\n',
-        'busco': '\ngit clone https://gitlab.com/ezlab/busco.git\ncd busco/\npython -m pip install .\npip install pandas\npip install requests\npip install biopython\nwget https://sourceforge.net/projects/bbmap/files/latest/download\ntar -zxvf download\nexporth PATH=$(pwd)/bbmap\nwget https://mmseqs.com/metaeuk/metaeuk-linux-avx2.tar.gz; tar xzvf metaeuk-linux-avx2.tar.gz; export PATH=$(pwd)/metaeuk/bin/:$PATH\n',
+        'busco': '\ngit clone https://gitlab.com/ezlab/busco.git\ncd busco/\npython -m pip install .\npip install pandas\npip install requests\npip install biopython\nwget https://sourceforge.net/projects/bbmap/files/latest/download\ntar -zxvf download\nexport PATH=$(pwd)/bbmap\nwget https://mmseqs.com/metaeuk/metaeuk-linux-avx2.tar.gz; tar xzvf metaeuk-linux-avx2.tar.gz; export PATH=$(pwd)/metaeuk/bin/:$PATH\n',
         'TransDecoder-': '\ncurl -L https://cpanmin.us | perl - App::cpanminus\ncpanm install DB_Filea\ncpanm install URI::Escape\nwget https://github.com/TransDecoder/TransDecoder/archive/refs/tags/TransDecoder-v5.7.1.zip\nunzip TransDecoder-v5.7.1.zip\n'}
     mr = list(installation_instructions.keys()) if instlist == None else instlist
     if name:
