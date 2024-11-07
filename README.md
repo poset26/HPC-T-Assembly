@@ -2,7 +2,8 @@
 ### Overview
  This script automates a high-performance computing (HPC) pipeline for RNA sequencing data analysis. It includes steps for data trimming, assembly, alignment, quantification, clustering, ORF predictions, and Transcript statistics. The script is designed to handle paired-end RNA-seq data and generate the intermediate and final output files necessary for downstream analyses. 
 
-![IMG_20240910_001739_590](https://github.com/user-attachments/assets/dd8b4106-7200-4427-83ea-2c21c96859ac)
+
+![Figure1_HPC_T_Assembly_pipeline](https://github.com/user-attachments/assets/89f0ce0b-b9e0-41db-865f-c957dd71e06d)
 
 
 ## Dependencies
@@ -108,7 +109,9 @@ The graphical interface only requires python3 and a python library called flask.
 
 ## Multiple Species Workflow
 
-![IMG_20240910_001739_623](https://github.com/user-attachments/assets/f81c55df-6169-4367-ab84-b55bc3d942d4)
+![Figure4_The_HPC_T_Assembly_parallel_stages](https://github.com/user-attachments/assets/a9159e5c-8c75-42b7-9100-70ab712ed5ec)
+
+
 
 ### Execution for Multiple Species
 * As shown in the previous graphic, when running the software for multiple species, a separate folder is created for each species, and the pipeline is executed in parallel within these folders.
@@ -116,7 +119,9 @@ The graphical interface only requires python3 and a python library called flask.
 ### Execution for Single Species
 The execution of the pipeline for a single specie proceeds as follows:
 
-![image-2](https://github.com/user-attachments/assets/46b38ea0-637d-4243-a05e-de5aac55dd37)
+![Figure3_HPC_T_Assembly_pipeline](https://github.com/user-attachments/assets/4c729d4f-7136-4eca-b85d-3fb2a24e2620)
+
+
 
 
 * Fastp is launched for each left, right reads pair. Generating the trimmed reads which will be used in the next step and an HTML file with the quality analysis before and after trimming which can be reviewed by the user.
