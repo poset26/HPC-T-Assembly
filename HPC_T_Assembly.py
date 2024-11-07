@@ -213,6 +213,16 @@ def mainhpc(threads):
         f.write(f'cd {gc()}\n')
         f.write(" &\n".join(bowtie))
 
+    # Busco 
+    busco = getcommand("Config/busco.config.txt").format(**locals())
+
+    with open("busco.sh", "w") as f:
+        f.write("#!/bin/bash\n")
+        f.write(getsbatch("Config/busco.config.txt"))
+        f.write(f'cd {gc()}\n')
+        f.write(busco)    
+
+
     # ORF Predictions
 
     transdecoder_orf = getcommand("Config/transdecoder.config.txt").format(**locals())
@@ -296,6 +306,7 @@ def getreqs():
     fastp
     bowtie
     TransDecoder-
+    busco
     """.split()
     mr = reqs
     reqs = {x: "" for x in reqs}
