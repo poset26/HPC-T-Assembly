@@ -408,7 +408,7 @@ def install_missing(name = None, instlist = None): # Install required software
         'Corset-tools': '\ngit clone https://github.com/Adamtaranto/Corset-tools.git\n',
         'SPAdes': '\nwget https://github.com/ablab/spades/releases/download/v4.0.0/SPAdes-4.0.0-Linux.tar.gz\ntar -zxvf SPAdes-4.0.0-Linux.tar.gz\n',
         'fastp': '\nwget http://opengene.org/fastp/fastp\nchmod +x fastp\nmkdir fastp1\nmv fastp fastp1\nmv fastp1 fastp\n',
-        'busco': '\ngit clone https://gitlab.com/ezlab/busco.git\ncd busco/\npython -m pip install .\npip install pandas\npip install requests\npip install biopython\nwget https://sourceforge.net/projects/bbmap/files/latest/download\ntar -zxvf download\nexport PATH=$(pwd)/bbmap\nwget https://mmseqs.com/metaeuk/metaeuk-linux-avx2.tar.gz; tar xzvf metaeuk-linux-avx2.tar.gz; export PATH=$(pwd)/metaeuk/bin/:$PATH\n',
+        'busco': '\ngit clone https://gitlab.com/ezlab/busco.git\ncd busco/\npython -m pip install .\npip install pandas\npip install requests\npip install biopython\nwget https://sourceforge.net/projects/bbmap/files/latest/download\ntar -zxvf download\nexport PATH=$(pwd)/bbmap:$PATH\nwget https://mmseqs.com/metaeuk/metaeuk-linux-avx2.tar.gz; tar xzvf metaeuk-linux-avx2.tar.gz; export PATH=$(pwd)/metaeuk/bin/:$PATH\n',
         'TransDecoder-': '\ncurl -L https://cpanmin.us | perl - App::cpanminus\ncpanm install DB_Filea\ncpanm install URI::Escape\nwget https://github.com/TransDecoder/TransDecoder/archive/refs/tags/TransDecoder-v5.7.1.zip\nunzip TransDecoder-v5.7.1.zip\n'}
     mr = list(installation_instructions.keys()) if instlist == None else instlist
     if name:

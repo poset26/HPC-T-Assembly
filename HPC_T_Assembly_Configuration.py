@@ -95,7 +95,7 @@ stdfiles[0]:"""{reqd[fastp]}/fastp
 -j {leftio}_fastp.json
 -h {leftio}_fastp.html""",
 stdfiles[1]:"""{reqd[SPAdes]}/bin/rnaspades.py
--t 48
+-t {threads}
 -o ASSEMBLY/RNA-Spades""",
 stdfiles[2]:"""{reqd[cdhit]}/cd-hit-est
 -i transcripts.fasta
@@ -104,7 +104,7 @@ stdfiles[3]:"""{reqd[salmon]}/bin/salmon
 index
 --index Data/Salmon_Index 
 --transcripts transcripts_cdhit.fasta
--p 48""",
+-p {threads}""",
 stdfiles[4]:"""{reqd[salmon]}/bin/salmon quant
 --index Data/Salmon_Index
 --libType A
