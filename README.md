@@ -14,7 +14,7 @@
 
 #### Main Code
 * Slurm
-* Python3
+* Python3.12+
 * pip
 * Perl
 * wget
