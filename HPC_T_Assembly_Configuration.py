@@ -95,7 +95,7 @@ stdfiles[0]:"""{reqd[fastp]}/fastp
 -I {righti}
 -o {leftio}_cleaned.fastq 
 -O {rightio}_cleaned.fastq 
--w 24
+-w 48
 -j {leftio}_fastp.json
 -h {leftio}_fastp.html""",
 stdfiles[1]:"""{reqd[SPAdes]}/bin/rnaspades.py
