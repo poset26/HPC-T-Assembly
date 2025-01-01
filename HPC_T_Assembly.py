@@ -359,9 +359,10 @@ fix() {
   fi
   line=${1:-0}
   line=$((line - sl)) 
+  sl=$((sl + line))
   tail -n +"$((line + 1))" HPC_T_Assembly_Single.sh | sed '1s/--dependency=afterany:[^ ]*//' > HPC_T_Assembly_Single_tmp.sh
   mv HPC_T_Assembly_Single_tmp.sh HPC_T_Assembly_Single.sh
-  sed -i -E "s/^sl=[0-9]+/sl=$line/" "cleanup.sh"
+  sed -i -E "s/^sl=[0-9]+/sl=sl/" "cleanup.sh"
   sed -i -E "s/^remaining=[0-9]+/remaining=$((remaining - 1))/" "cleanup.sh"
   bash HPC_T_Assembly_Single.sh
 }
