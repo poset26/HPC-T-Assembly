@@ -54,10 +54,14 @@ def generate():
             if file_name in addconfigs:
                 file.write(f"\n{request.form[f'{file_name}_additional_configurations']}")
     with open("sbatch.config.txt", "w") as f:
-        f.write("# Script, Dependencies, Memory \n")
+        if request.form.get("retries") != "0":
+            f.write(f"# Script, Dependencies, Memory, {request.form.get("retries")}\n")
+        else:
+            f.write("# Script, Dependencies, Memory, Retries \n")
         f.write(f"{sbatchconfig['memory'][:-2]}g\n".join(sbatch))
         if request.form.get("Delete") == "true":
             f.write("\nremove_software.sh cleanup.sh 12g\n")
+
     filelist = [x + ".config.txt" for x in stdfiles + singlecore] + ["sbatch.config.txt"]#, "HPC_T_Assembly.py"]
     #with open("HPC_T_Assembly.py","wb") as f:
         #f.write(hpcpipeline)
@@ -91,7 +95,7 @@ stdfiles[0]:"""{reqd[fastp]}/fastp
 -I {righti}
 -o {leftio}_cleaned.fastq 
 -O {rightio}_cleaned.fastq 
--w 48
+-w 24
 -j {leftio}_fastp.json
 -h {leftio}_fastp.html""",
 stdfiles[1]:"""{reqd[SPAdes]}/bin/rnaspades.py
