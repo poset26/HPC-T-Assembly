@@ -467,9 +467,9 @@ if grep -q "No such file or directory" salmonpos.v; then
     exit 1
 fi
 # Verify BowtieIDX
-cat bowtieindex.err | grep CANCELLED > bowtie.v
-if grep -q "CANCELLED" hisat.v; then
-  echo "Hisat Verification Failed"
+cat bowtie2index.err | grep CANCELLED > bowtie.v
+if grep -q "CANCELLED" bowtie.v; then
+  echo "BowtieIDX Verification Failed"
   fix 9
   exit 1
 fi 
@@ -507,7 +507,39 @@ if grep -q "BUSCO analysis failed!" busco.v; then
     echo "Busco Verification Failed"
     fix 10
     exit 1
-fi""")
+fi
+
+#Verify Transdecoder 
+cat transdecoder.err | grep CANCELLED > transdecoder.v
+if grep -q "CANCELLED" transdecoder
+then
+  echo "Transdecoder Verification Failed"
+  fix 12
+  exit 1
+fi
+cat transdecoder.* | grep "Done preparing long ORFs" > transdecoder.v
+if ! grep -q "Done preparing long ORFs" transdecoder.v; then
+    echo "Transdecoder Verification Failed"
+    fix 12
+    exit 1
+fi
+
+#Verify Transdecoder Predict
+cat transdecoder_predict.err  | grep "transdecoder is finished." > transdecoder_predict.v
+if ! grep -q "transdecoder is finished." transdecoder_predict
+then
+  echo "Transdecoder Predict Verification Failed"
+  fix 13
+  exit 1
+fi
+cat transdecoder_predict.err | grep CANCELLED > transdecoder_predict.v
+if grep -q "CANCELLED" transdecoder_predict
+then
+  echo "Transdecoder Predict Verification Failed"
+  fix 13
+  exit 1
+fi
+""")
         if remove():
             f.write("bash remove_software.sh\n")
 
