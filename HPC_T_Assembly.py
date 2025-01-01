@@ -363,7 +363,7 @@ fix() {
   mv HPC_T_Assembly_Single_tmp.sh HPC_T_Assembly_Single.sh
   sed -i -E "s/^sl=[0-9]+/sl=$line/" "cleanup.sh"
   sed -i -E "s/^remaining=[0-9]+/remaining=$((remaining - 1))/" "cleanup.sh"
-  #bash HPC_T_Assembly_Single.sh
+  bash HPC_T_Assembly_Single.sh
 }
 
 # Read number of reads from Processes.txt
