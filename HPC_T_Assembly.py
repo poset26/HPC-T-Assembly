@@ -401,7 +401,7 @@ fi
 # Verify CDHIT
 cat cdhit.* | grep "writing new database
 writing clustering information
-program completed" > chdit.v
+program completed" > cdhit.v
 cat cdhit.err | grep CANCELLED >> cdhit.v
 if grep -q "CANCELLED" cdhit.v; then
   echo "CDHIT Verification Failed"
