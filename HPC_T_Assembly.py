@@ -354,7 +354,7 @@ def cleanup():
         f.write("""sl=0
 fix() {
   if [[ $remaining -eq 0 ]]; then
-    echo "Error: Could not fix the issue"
+    echo "Error: Could not fix the issue. "
     exit 1
   fi
   line=${1:-0}
@@ -371,14 +371,14 @@ fix() {
 reads=$(sed -n '2p' Processes.txt | awk -F'|' '{print $2}')
 
 # Verify fastp
-cat fastp.err | grep CANCELLED > fastp.v
-if grep -q "CANCELLED" fastp.v; then
+cat fastp.err | grep CANCELLED > fastp.verification
+if grep -q "CANCELLED" fastp.verification; then
   echo "FastP Verification Failed"
   fix 0
   exit 1
 fi               
-cat fastp.* | grep "Duplication rate:" > fastp.v
-fastp_lines=$(wc -l < fastp.v)
+cat fastp.* | grep "Duplication rate:" > fastp.verification
+fastp_lines=$(wc -l < fastp.verification)
 if [ "$fastp_lines" -lt "$reads" ]; then
   echo "Fastp Verification Failed"
   fix 0
@@ -386,14 +386,14 @@ if [ "$fastp_lines" -lt "$reads" ]; then
 fi
 
 # Verify assembly
-cat assembly.* | grep "Assembling finished" > assembly.v
-cat assembly.err | grep CANCELLED >> assembly.v
-if grep -q "CANCELLED" assembly.v; then
+cat assembly.* | grep "Assembling finished" > assembly.verification
+cat assembly.err | grep CANCELLED >> assembly.verification
+if grep -q "CANCELLED" assembly.verification; then
   echo "Assembly Verification Failed"
   fix 1
   exit 1
 fi  
-if ! grep -q "Assembling finished." assembly.v; then
+if ! grep -q "Assembling finished." assembly.verification; then
   echo "Assembly Verification Failed"
   fix 1
   exit 1
@@ -402,44 +402,44 @@ fi
 # Verify CDHIT
 cat cdhit.* | grep "writing new database
 writing clustering information
-program completed" > cdhit.v
-cat cdhit.err | grep CANCELLED >> cdhit.v
-if grep -q "CANCELLED" cdhit.v; then
+program completed" > cdhit.verification
+cat cdhit.err | grep CANCELLED >> cdhit.verification
+if grep -q "CANCELLED" cdhit.verification; then
   echo "CDHIT Verification Failed"
   fix 2
   exit 1
 fi  
 if ! grep -q "writing new database
 writing clustering information
-program completed" cdhit.v; then
+program completed" cdhit.verification; then
   echo "CDHIT Verification Failed"
   fix 2
   exit 1
 fi
 
 # Verify salmonidx
-cat salmonidx.out | grep "Edges construction time:" > salmonidx.v
-cat salmonidx.err | grep CANCELLED >> salmonidx.v
-if grep -q "CANCELLED" salmonidx.v; then
+cat salmonidx.out | grep "Edges construction time:" > salmonidx.verification
+cat salmonidx.err | grep CANCELLED >> salmonidx.verification
+if grep -q "CANCELLED" salmonidx.verification; then
   echo "SalmonIDX Verification Failed"
   fix 3
   exit 1
 fi  
-if ! grep -q "Edges construction time:" salmonidx.v; then
+if ! grep -q "Edges construction time:" salmonidx.verification; then
   echo "Salmon idx Verification Failed"
   fix 3
   exit 1
 fi
 
 # Verify salmon
-cat salmon.err | grep CANCELLED > salmon.v
-if grep -q "CANCELLED" salmon.v; then
+cat salmon.err | grep CANCELLED > salmon.verification
+if grep -q "CANCELLED" salmon.verification; then
   echo "Salmon Verification Failed"
   fix 4
   exit 1
 fi  
-cat salmon.* | grep "done writing equivalence class counts." > salmon.v
-salmon_lines=$(wc -l < salmon.v)
+cat salmon.* | grep "done writing equivalence class counts." > salmon.verification
+salmon_lines=$(wc -l < salmon.verification)
 if [ "$salmon_lines" -lt "$reads" ]; then
   echo "Salmon Verification Failed"
   fix 4
@@ -447,48 +447,48 @@ if [ "$salmon_lines" -lt "$reads" ]; then
 fi
 
 # Verify corset
-cat Corset.* | grep "Finished" > corset.v
-cat Corset.err | grep CANCELLED >> corset.v
-if grep -q "CANCELLED" corset.v; then
+cat Corset.* | grep "Finished" > corset.verification
+cat Corset.err | grep CANCELLED >> corset.verification
+if grep -q "CANCELLED" corset.verification; then
   echo "Corset Verification Failed"
   fix 6
   exit 1
 fi  
-if ! grep -q "Finished" corset.v; then
+if ! grep -q "Finished" corset.verification; then
   echo "Corset Verification Failed"
   fix 6
   exit 1
 fi
 # Verify SalmonPos
-cat salmonpos.err | grep "No such file or directory" > salmonpos.v
-if grep -q "No such file or directory" salmonpos.v; then
+cat salmonpos.err | grep "No such file or directory" > salmonpos.verification
+if grep -q "No such file or directory" salmonpos.verification; then
     echo "SalmonPos Verification Failed"
     fix 5
     exit 1
 fi
 # Verify BowtieIDX
-cat bowtie2index.err | grep CANCELLED > bowtie.v
-if grep -q "CANCELLED" bowtie.v; then
+cat bowtie2index.err | grep CANCELLED > bowtie.verification
+if grep -q "CANCELLED" bowtie.verification; then
   echo "BowtieIDX Verification Failed"
   fix 9
   exit 1
 fi 
-cat bowtie2index.err | grep "Renaming Index" > bowtie.v
-if ! grep -q "Renaming Index" bowtie.v; then
+cat bowtie2index.err | grep "Renaming Index" > bowtie.verification
+if ! grep -q "Renaming Index" bowtie.verification; then
     echo "Bowtie Index Verification Failed"
     fix 9
     exit 1
 fi
   
 # Verify Bowtie2
-cat bowtie2.err | grep CANCELLED > bowtie2.v
-if grep -q "CANCELLED" bowtie2.v; then
+cat bowtie2.err | grep CANCELLED > bowtie2.verification
+if grep -q "CANCELLED" bowtie2.verification; then
   echo "Bowtie2 Verification Failed"
   fix 11
   exit 1
 fi  
-cat bowtie2.* | grep "overall alignment rate" > bowtie.v
-bowtie_lines=$(wc -l < bowtie.v)
+cat bowtie2.* | grep "overall alignment rate" > bowtie.verification
+bowtie_lines=$(wc -l < bowtie.verification)
 if [ "$bowtie_lines" -lt "$reads" ]; then
   echo "Bowtie2 Verification Failed"
   fix 11
@@ -496,43 +496,43 @@ if [ "$bowtie_lines" -lt "$reads" ]; then
 fi
 
 #Verify Busco
-cat busco.err | grep CANCELLED > busco.v
-if grep -q "CANCELLED" busco.v; then
+cat busco.err | grep CANCELLED > busco.verification
+if grep -q "CANCELLED" busco.verification; then
   echo "Busco Verification Failed"
   fix 10
   exit 1
 fi
-cat busco.* | grep "BUSCO analysis failed!" > busco.v
-if grep -q "BUSCO analysis failed!" busco.v; then
+cat busco.* | grep "BUSCO analysis failed!" > busco.verification
+if grep -q "BUSCO analysis failed!" busco.verification; then
     echo "Busco Verification Failed"
     fix 10
     exit 1
 fi
 
 #Verify Transdecoder 
-cat transdecoder.err | grep CANCELLED > transdecoder.v
+cat transdecoder.err | grep CANCELLED > transdecoder.verification
 if grep -q "CANCELLED" transdecoder
 then
   echo "Transdecoder Verification Failed"
   fix 12
   exit 1
 fi
-cat transdecoder.* | grep "Done preparing long ORFs" > transdecoder.v
-if ! grep -q "Done preparing long ORFs" transdecoder.v; then
+cat transdecoder.* | grep "Done preparing long ORFs" > transdecoder.verification
+if ! grep -q "Done preparing long ORFs" transdecoder.verification; then
     echo "Transdecoder Verification Failed"
     fix 12
     exit 1
 fi
 
 #Verify Transdecoder Predict
-cat transdecoder_predict.err  | grep "transdecoder is finished." > transdecoder_predict.v
+cat transdecoder_predict.err  | grep "transdecoder is finished." > transdecoder_predict.verification
 if ! grep -q "transdecoder is finished." transdecoder_predict
 then
   echo "Transdecoder Predict Verification Failed"
   fix 13
   exit 1
 fi
-cat transdecoder_predict.err | grep CANCELLED > transdecoder_predict.v
+cat transdecoder_predict.err | grep CANCELLED > transdecoder_predict.verification
 if grep -q "CANCELLED" transdecoder_predict
 then
   echo "Transdecoder Predict Verification Failed"
