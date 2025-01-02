@@ -166,6 +166,11 @@ The execution of the pipeline for a single specie proceeds as follows:
     - transcripts_cdhit.fasta
     - transcripts_rnaspades.fasta
 
+
+## Execution Problems
+* If the pipeline fails to complete its execution, the code will attempt to restart from the last successful step up to 3 times (value set by the user in the GUI).
+* If the pipeline fails to complete its execution after the amount of attempts set by the user, the code will stop leaving the directory without the organization previously mentioned signalling to the user that there was a problem. In this case the user can read `Verification_Cleaning.out` to identify which step didn't conclude correctly, the `.verification` files or the `.out` file for that step to get a better understanding of why the execution halted incorrectly.
+
 ## Code Breakdown
 The main script is HPC_T_Assembly.py, it's a python code that takes the parameters set in the configuration site and generates the bash scripts for each step of the pipeline.
 

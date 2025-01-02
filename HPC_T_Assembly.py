@@ -346,7 +346,7 @@ def cleanup():
 #SBATCH """ + getpartition() + """
 #SBATCH --mem=12GB
 #SBATCH --time 00:15:00
-""" + f"#SBATCH --account {getaccount('Config/assembly.config.txt')}\n")
+""" + f"#SBATCH --account {getaccount('Config/assembly.config.txt')}\n" + "#SBATCH -o Verification_Cleaning.out\n")
         if retry:
             f.write(f"remaining={lives}\n")
         else:
