@@ -1,6 +1,6 @@
 ## HPC_T_Assembly
 ### Overview
- This script automates a high-performance computing (HPC) pipeline for RNA sequencing data analysis. It includes steps for data trimming, assembly, alignment, quantification, clustering, ORF predictions, and Transcript statistics. The script is designed to handle paired-end RNA-seq data and generate the intermediate and final output files necessary for downstream analyses. 
+ This software automates a high-performance computing (HPC) pipeline for RNA sequencing data analysis. It includes steps for data trimming, assembly, alignment, quantification, clustering, ORF predictions, and Transcript statistics. The software is designed to handle paired-end RNA-seq data and generate the intermediate and final output files necessary for downstream analyses. 
 
 
 ![Figure1_HPC_T_Assembly_pipeline](https://github.com/user-attachments/assets/89f0ce0b-b9e0-41db-865f-c957dd71e06d)
@@ -172,17 +172,17 @@ The execution of the pipeline for a single specie proceeds as follows:
 * If the pipeline fails to complete its execution after the amount of attempts set by the user, the code will stop leaving the directory without the organization previously mentioned signalling to the user that there was a problem. In this case the user can read `Verification_Cleaning.out` to identify which step didn't conclude correctly, the `.verification` files or the `.out` file for that step to get a better understanding of why the execution halted incorrectly.
 
 ## Code Breakdown
-The main script is HPC_T_Assembly.py, it's a python code that takes the parameters set in the configuration site and generates the bash scripts for each step of the pipeline.
+The main code is HPC_T_Assembly.py, it's a python code that takes the parameters set in the configuration site and generates the bash scripts for each step of the pipeline.
 
 Main functions:
 * getreqs(): This function retrieves the paths to required software tools like Trinity, CD-HIT, Salmon, etc., by searching for them in pre-defined locations.
- * mainhpc(threads): This is the main function of the script. It takes the number of available threads as input and performs the following:
+ * mainhpc(threads): This is the main function of the tool. It takes the number of available threads as input and performs the following:
    * Calls getreqs() to get software paths.
    * Checks if multiple species are present based on the HPC_T_Assembly_Data.txt file.
      * If multiple species are present, it generates separate folders for each species and creates an instance of the pipeline inside each folder to run them in parallel.
    * If a single species is present:
      * Processes the HPC_T_Assembly_Data.txt file to get read paths.
-     * Generates the main assembly pipeline scripts using these read paths and configuration files. This script includes steps for:
+     * Generates the main assembly pipeline scripts using these read paths and configuration files. This tool includes steps for:
        * Fastq trimming with fastp.
        * Assembly with SPAdes.
        * Statistics with Trinity Stats.
