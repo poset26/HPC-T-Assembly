@@ -15,9 +15,9 @@ def main():
 @app.route('/generate', methods=['POST'])
 def generate():  
     sbatchconfig = {"nodes":request.form["nodes"],"threads":request.form["threads"], "memory":request.form["memory"], "account":request.form["account"], "time":request.form["time"], "partition":request.form["p_flag"]} 
-    sbatch = ['pipeline.sh  ', 'assembly.sh pipeline.sh ', 'cdhit.sh assembly.sh ', 'salmonidx.sh cdhit.sh ', 'salmon.sh salmonidx.sh ', 'salmonpos.sh salmon.sh ', 'corset.sh salmonpos.sh ', 'corset2transcript.sh corset.sh ', 'statistics.sh corset2transcript.sh ', 'bowtieindex.sh corset2transcript.sh ', 'busco.sh bowtieindex.sh ','bowtie2.sh bowtieindex.sh ', 'cleanup.sh bowtie2.sh 12g']
+    sbatch = ['pipeline.sh  ', 'assembly.sh pipeline.sh ', 'trinity.sh pipeline.sh ','selector.sh assembly.sh trinity.sh ','cdhit.sh selector.sh ', 'salmonidx.sh cdhit.sh ', 'salmon.sh salmonidx.sh ', 'salmonpos.sh salmon.sh ', 'corset.sh salmonpos.sh ', 'corset2transcript.sh corset.sh ', 'statistics.sh corset2transcript.sh ', 'bowtieindex.sh corset2transcript.sh ', 'busco.sh bowtieindex.sh ','bowtie2.sh bowtieindex.sh ', 'cleanup.sh bowtie2.sh 12g']
     sbatcht = sbatch[:-1] + ['transdecoder.sh bowtie2.sh ', 'transdecoder_predict.sh transdecoder.sh ', 'cleanup.sh transdecoder_predict.sh 12g']
-    stdfiles = ["fastp", "assembly", "cdhit" ,"salmonidx", "salmon", "salmonpos", "bowtie2index", "bowtie2", "busco"] #Use amount of threads specified by the user
+    stdfiles = ["fastp", "assembly", "trinity","cdhit" ,"salmonidx", "salmon", "salmonpos", "bowtie2index", "bowtie2", "busco"] #Use amount of threads specified by the user
     singlecore = ["Corset", "Corset2transcript","trinitystats","transdecoder", "transdecoder_predict"] #Use only 1 thread
     addconfigs = ["fastp","assembly","cdhit","Corset","bowtie2","salmon"]  
     sbatch = sbatcht if request.form.get("ORFs") == "true" else sbatch #Add ORF prediction to the pipeline if requested
@@ -74,7 +74,7 @@ def generate():
     return send_file(f"{os.getcwd()}/Config.zip", as_attachment=True)
 
 # file configurations
-stdfiles = ["fastp", "assembly", "cdhit" ,"salmonidx", "salmon", "salmonpos", "bowtie2index", "bowtie2","busco"]
+stdfiles = ["fastp", "assembly","trinity", "cdhit" ,"salmonidx", "salmon", "salmonpos", "bowtie2index", "bowtie2","busco"]
 singlecore = ["Corset", "Corset2transcript","trinitystats","transdecoder", "transdecoder_predict"]
 defaultconfigs = {
 singlecore[0]:"""{reqd[corset-]}/corset corset
@@ -101,32 +101,40 @@ stdfiles[0]:"""{reqd[fastp]}/fastp
 stdfiles[1]:"""{reqd[SPAdes]}/bin/rnaspades.py
 -t {threads}
 -o ASSEMBLY/RNA-Spades""",
-stdfiles[2]:"""{reqd[cdhit]}/cd-hit-est
+stdfiles[2]:"""{reqd[trinityrnaseq]}/Trinity
+--seqType fq
+--max_memory 300G 
+--left {tleft} 
+--right {tright} 
+--CPU {threads}
+--output trinity_out
+""",
+stdfiles[3]:"""{reqd[cdhit]}/cd-hit-est
 -i transcripts.fasta
 -o transcripts_cdhit.fasta""",
-stdfiles[3]:"""{reqd[salmon]}/bin/salmon
+stdfiles[4]:"""{reqd[salmon]}/bin/salmon
 index
 --index Data/Salmon_Index 
 --transcripts transcripts_cdhit.fasta
 -p {threads}""",
-stdfiles[4]:"""{reqd[salmon]}/bin/salmon quant
+stdfiles[5]:"""{reqd[salmon]}/bin/salmon quant
 --index Data/Salmon_Index
 --libType A
 -1 {x}
 -2 {y}""",
-stdfiles[5]:"""gunzip
+stdfiles[6]:"""gunzip
 -k RNA_SALMON_{ID}/aux_info/eq_classes.txt.gz""",
-stdfiles[6]:"""{reqd[bowtie]}/bowtie2-build 
+stdfiles[7]:"""{reqd[bowtie]}/bowtie2-build 
 transcripts_Corset.fasta
 Index""",
-stdfiles[7]:"""{reqd[bowtie]}/bowtie2
+stdfiles[8]:"""{reqd[bowtie]}/bowtie2
 -p {threadsperrun}
 -x Index
 -1 {x}
 -2 {y}
 -S {ID}.sam
 --very-sensitive > log_{ID}.txt""",
-stdfiles[8]:"""{reqd[busco]}/bin/busco 
+stdfiles[9]:"""{reqd[busco]}/bin/busco 
 -i transcripts_Corset.fasta 
 -l {buscolineage}
 -o busco_nematoda 

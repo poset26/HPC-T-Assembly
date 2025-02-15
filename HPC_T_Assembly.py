@@ -117,6 +117,56 @@ def mainhpc(threads):
         f.write(f'cd {gc()}\n')
         f.write(spades)
 
+    # Second Assembler TrinityRnaSeq
+    tleft = ",".join(lreads)
+    tright = ",".join(rreads)
+    trinity = getcommand("Config/trinity.config.txt").format(**locals())
+    with open("trinity.sh","w") as f:
+        f.write("#!/bin/bash\n")
+        f.write(getsbatch("Config/trinity.config.txt"))
+        f.write(f'cd {gc()}\n')
+        f.write('\nexport PATH=$PATH:$(pwd)/Software/jellyfish-2.3.1\nexport PATH=$PATH:$(pwd)/Software/jellyfish-2.3.1/bin\nexport PATH=$PATH:$(pwd)/Software/samtools-1.21\nexport PATH=$PATH:$(pwd)/Software/samtools-1.21/bin\nexport PATH=$PATH:$(pwd)/Software/bowtie2-2.5.4\nexport PATH=$PATH:$(pwd)/Software/bowtie2-2.5.4/bin\nexport PATH=$PATH:$(pwd)/Software/salmon-latest_linux_x86_64/bin\n')
+        f.write(trinity)
+        """
+cd /g100_scratch/userexternal/tposemar/TestTrinity
+export PATH=$PATH:$(pwd)/Software/jellyfish-2.3.1
+export PATH=$PATH:$(pwd)/Software/jellyfish-2.3.1/bin
+export PATH=$PATH:$(pwd)/Software/samtools-1.21
+export PATH=$PATH:$(pwd)/Software/samtools-1.21/bin
+export PATH=$PATH:$(pwd)/Software/bowtie2-2.5.4
+export PATH=$PATH:$(pwd)/Software/bowtie2-2.5.4/bin
+time trinityrnaseq-v2.15.2/Trinity --seqType fq --max_memory 300G --left SRR5759448_1_cleaned.fastq --right SRR5759448_2_cleaned.fastq --CPU 48 --output trinity_out"""
+
+    #Selector
+
+    with open("selector.sh", "w") as f:
+        f.write("#!/bin/bash\n")
+        f.write("""#SBATCH -N 1
+#SBATCH -n 8
+#SBATCH """ + getpartition() + """
+#SBATCH --mem=12GB
+#SBATCH --time 00:15:00
+""" + f"#SBATCH --account {getaccount('Config/assembly.config.txt')}\n" + "#SBATCH -o Selector.out\n")
+        f.write(f'cd {gc()}\n')
+        f.write(r"""perl Software/trinityrnaseq-v2.15.2/util/TrinityStats.pl trinity_out.Trinity.fasta > trinity_stats.txt
+perl Software/trinityrnaseq-v2.15.2/util/TrinityStats.pl transcripts.fasta > spades_stats.txt
+
+# Extract first N50 values using robust pattern matching
+n50_trinity=$(grep -m1 'Contig N50:[[:space:]]*[0-9]\+' trinity_stats.txt | awk '{print $NF}')
+n50_spades=$(grep -m1 'Contig N50:[[:space:]]*[0-9]\+' spades_stats.txt | awk '{print $NF}')
+
+# Compare values and output result
+if [ "$n50_trinity" -gt "$n50_spades" ]; then
+    echo "trinity_stats.txt has higher N50 ($n50_trinity vs $n50_spades)"
+    mv transcripts.fasta SpadesTranscripts.fasta
+    cp trinity_out.Trinity.fasta transcripts.fasta
+elif [ "$n50_spades" -gt "$n50_trinity" ]; then
+    echo "spades_stats.txt has higher N50 ($n50_spades vs $n50_trinity)"
+else
+    echo "Both files have identical N50: $n50_trinity"
+fi
+""")
+
     # Statistics
     # trinity = f"perl {reqd['trinityrnaseq']}/util/TrinityStats.pl ASSEMBLY/ELA_spades_k_auto/transcripts.fasta > spadestats.txt"
     trinity = getcommand("Config/trinitystats.config.txt").format(**locals())
@@ -299,6 +349,8 @@ def getreqs():
     ld = ls("/")
     reqs = """
     trinityrnaseq
+    jellyfish
+    samtools
     cdhit
     salmon
     corset-
@@ -602,11 +654,15 @@ mv Intermediate_Files/*stats.txt Statistics
 def install_missing(name=None, instlist=None):  # Install required software
 
     installation_instructions = {
-        'trinityrnaseq': '\ngit clone https://github.com/trinityrnaseq/trinityrnaseq.git\ncd trinityrnaseq\nmake\nmake plugins\ncd ..\n',
+        'trinityrnaseq': 'wget https://github.com/trinityrnaseq/trinityrnaseq/releases/download/Trinity-v2.15.2/trinityrnaseq-v2.15.2.FULL.tar.gz\ntar -zxvf trinityrnaseq-v2.15.2.FULL.tar.gz\ncd trinityrnaseq-v2.15.2\nmake\nmake plugins\ncd ..\n',
+        'jellyfin': '\nwget https://github.com/gmarcais/Jellyfish/releases/download/v2.3.1/jellyfish-2.3.1.tar.gz\ntar -zxvf jellyfish-2.3.1.tar.gz\ncd jellyfish-2.3.1\n./configure\nmake\ncd ..\n',
+        'samtools': 'wget https://github.com/samtools/samtools/releases/download/1.21/samtools-1.21.tar.bz2\ntar -xf samtools-1.21.tar.bz2\ncd samtools-1.21 \n./configure\nmake \ncd ..\n',
+
+        #'trinityrnaseq': '\ngit clone https://github.com/trinityrnaseq/trinityrnaseq.git\ncd trinityrnaseq\nmake\nmake plugins\ncd ..\n',
         'bowtie': 'wget https://github.com/BenLangmead/bowtie2/releases/download/v2.5.4/bowtie2-2.5.4-sra-linux-x86_64.zip -O bowtiebin.zip\nunzip bowtiebin.zip\nmv bowtie2-2.5.4-sra-linux-x86_64 bowtie2-2.5.4\n',
         # 'bowtie': '\nwget https://sourceforge.net/projects/bowtie-bio/files/latest/download -O bowtie.zip\nunzip bowtie.zip\nmkdir bowtie\nmv bowtie*/* bowtie\nrm -rf bowtie2-*\ncd bowtie\ncmake . -D USE_SRA=1 -D USE_SAIS=1 && cmake --build .\n',
-        'salmon': '\nwget https://github.com/COMBINE-lab/salmon/releases/download/v1.10.0/salmon-1.10.0_linux_x86_64.tar.gz\ntar -zxvf salmon-1.10.0_linux_x86_64.tar.gz\n',
-        'samtools': '\ngit clone https://github.com/samtools/samtools.git\ncd samtools\n./configure\nmake\nmake install\ncd ..\n',
+        'salmon': '\nwget https://github.com/COMBINE-lab/salmon/releases/download/v1.10.0/salmon-1.10.0_linux_x86_64.tar.gzwget https://github.com/COMBINE-lab/salmon/releases/download/v1.10.0/salmon-1.10.0_linux_x86_64.tar.gz\ntar -zxvf salmon-1.10.0_linux_x86_64.tar.gz\n',
+        #'samtools': '\ngit clone https://github.com/samtools/samtools.git\ncd samtools\n./configure\nmake\nmake install\ncd ..\n',
         'cdhit': '\ngit clone https://github.com/weizhongli/cdhit.git\ncd cdhit\nmake\ncd cd-hit-auxtools\nmake\ncd ..\ncd ..\n',
         'corset-': '\nwget https://github.com/Oshlack/Corset/releases/download/version-1.09/corset-1.09-linux64.tar.gz\ntar -zxvf corset-1.09-linux64.tar.gz\n',
         'Corset-tools': '\ngit clone https://github.com/Adamtaranto/Corset-tools.git\n',
@@ -698,7 +754,7 @@ if __name__ == "__main__":
             if len(cline) == 2:
                 sbatchcmd += f'{cline[0].split(".")[0]}=$(sbatch --parsable --mem={cline[1]} {cline[0]})\n'
             else:
-                sbatchcmd += f'{cline[0].split(".")[0]}=$(sbatch --parsable --dependency=afterany:${":".join(['{' + x.split(".")[0] + '}' for x in cline[1:-1]])} --mem={cline[-1]} {cline[0]})\n'
+                sbatchcmd += f'{cline[0].split(".")[0]}=$(sbatch --parsable --dependency=afterany:${":$".join(['{' + x.split(".")[0] + '}' for x in cline[1:-1]])} --mem={cline[-1]} {cline[0]})\n'
 
     with open("HPC_T_Assembly_Single.sh", "w") as f:
         f.write(sbatchcmd)
