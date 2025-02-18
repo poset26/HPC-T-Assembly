@@ -19,7 +19,7 @@ def generate():
     sbatcht = sbatch[:-1] + ['transdecoder.sh bowtie2.sh ', 'transdecoder_predict.sh transdecoder.sh ', 'cleanup.sh transdecoder_predict.sh 12g']
     stdfiles = ["fastp", "assembly", "trinity","cdhit" ,"salmonidx", "salmon", "salmonpos", "bowtie2index", "bowtie2", "busco"] #Use amount of threads specified by the user
     singlecore = ["Corset", "Corset2transcript","trinitystats","transdecoder", "transdecoder_predict"] #Use only 1 thread
-    addconfigs = ["fastp","assembly","cdhit","Corset","bowtie2","salmon"]  
+    addconfigs = ["fastp","assembly","cdhit","Corset","bowtie2","salmon", "trinity"]
     sbatch = sbatcht if request.form.get("ORFs") == "true" else sbatch #Add ORF prediction to the pipeline if requested
     buscolineage = request.form["busco_additional_configurations"] if request.form["busco_additional_configurations"] in lineages else "nematoda_odb10"
     
