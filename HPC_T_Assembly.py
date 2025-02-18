@@ -125,7 +125,8 @@ def mainhpc(threads):
         f.write("#!/bin/bash\n")
         f.write(getsbatch("Config/trinity.config.txt"))
         f.write(f'cd {gc()}\n')
-        f.write('\nexport PATH=$PATH:$(pwd)/Software/jellyfish-2.3.1\nexport PATH=$PATH:$(pwd)/Software/jellyfish-2.3.1/bin\nexport PATH=$PATH:$(pwd)/Software/samtools-1.21\nexport PATH=$PATH:$(pwd)/Software/samtools-1.21/bin\nexport PATH=$PATH:$(pwd)/Software/bowtie2-2.5.4\nexport PATH=$PATH:$(pwd)/Software/bowtie2-2.5.4/bin\nexport PATH=$PATH:$(pwd)/Software/salmon-latest_linux_x86_64/bin\n')
+        f.write(f'\nexport PATH=$PATH:$(pwd)/{reqd["jellyfish"]}\nexport PATH=$PATH:$(pwd)/{reqd["jellyfish"]}/bin\nexport PATH=$PATH:$(pwd)/{reqd["samtools"]}\nexport PATH=$PATH:$(pwd)/{reqd["samtools"]}/bin\nexport PATH=$PATH:$(pwd)/{reqd["bowtie"]}\nexport PATH=$PATH:$(pwd)/{reqd["bowtie"]}/bin\nexport PATH=$PATH:$(pwd)/{reqd["salmon"]}/bin\n')
+        # f.write('\nexport PATH=$PATH:$(pwd)/Software/jellyfish-2.3.1\nexport PATH=$PATH:$(pwd)/Software/jellyfish-2.3.1/bin\nexport PATH=$PATH:$(pwd)/Software/samtools-1.21\nexport PATH=$PATH:$(pwd)/Software/samtools-1.21/bin\nexport PATH=$PATH:$(pwd)/Software/bowtie2-2.5.4\nexport PATH=$PATH:$(pwd)/Software/bowtie2-2.5.4/bin\nexport PATH=$PATH:$(pwd)/Software/salmon-latest_linux_x86_64/bin\n')
         f.write(trinity)
         """
 cd /g100_scratch/userexternal/tposemar/TestTrinity
