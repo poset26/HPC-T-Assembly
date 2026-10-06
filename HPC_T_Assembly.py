@@ -1,9 +1,21 @@
+import sys
+if sys.version_info < (3, 12):
+    raise SystemExit("HPC-T-Assembly requires Python 3.12 or newer.")
+
 from os import getcwd as gc
-from os.path import abspath, expandvars
+from os.path import abspath, expandvars, basename, exists, isdir
 from os import system
 import yaml
 from sys import argv
 from time import time
+import csv
+import glob
+import io
+import os
+import re
+import shlex
+import shutil
+import uuid
 
 reqd = {}
 base = ['#SBATCH -N ', '#SBATCH -n ', '#SBATCH --mem=', '#SBATCH --account ', '#SBATCH --time ']
@@ -11,56 +23,221 @@ Multispecie = False
 ExecuteNow = True if argv[1:2] in [["multispecie"], ["Execute"]] else False  # False if argv[1:2] == [] else True
 
 
-def mainhpc(threads):
+def read_read_pairs(contents):
+    """Parse a CSV manifest, ignoring blank lines and validating paired reads."""
+    pairs = []
+    for row in csv.reader(io.StringIO(contents)):
+        if not row or all(not item.strip() for item in row):
+            continue
+        if len(row) != 2 or not all(item.strip() for item in row):
+            raise ValueError("Each manifest row must contain exactly two read paths")
+        pairs.append(tuple(abspath(expandvars(item.strip())) for item in row))
+    return pairs
+
+
+def write_read_pairs(path, pairs):
+    """Write paired paths as CSV without losing commas or spaces in paths."""
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f, lineterminator="\n")
+        writer.writerows(pairs)
+
+
+def discover_read_pairs(directory="Data"):
+    """Find paired .fastq/.fq files, including gzip-compressed reads."""
+    pattern = re.compile(r"^(.*)_([12])\.(?:fastq|fq)(?:\.gz)?$", re.IGNORECASE)
+    found = {}
+    for path in sorted(glob.glob(os.path.join(directory, "*"))):
+        match = pattern.match(os.path.basename(path))
+        if match:
+            found.setdefault(match.group(1), {})[match.group(2)] = abspath(path)
+    pairs = []
+    for sample, mates in found.items():
+        if set(mates) != {"1", "2"}:
+            raise ValueError(f"Missing mate for read pair {sample!r}")
+        pairs.append((mates["1"], mates["2"]))
+    if not pairs:
+        raise ValueError(f"No paired FASTQ reads found in {directory!r}")
+    return pairs
+
+
+def read_stem(path):
+    for suffix in (".fastq.gz", ".fq.gz", ".fastq", ".fq"):
+        if path.lower().endswith(suffix):
+            return path[:-len(suffix)]
+    return os.path.splitext(path)[0]
+
+
+def move_input_reads(manifest_path="HPC_T_Assembly_Data.txt", target="Data2"):
+    """Move every manifest read into target without shell word splitting."""
+    os.makedirs(target, exist_ok=True)
+    with open(manifest_path, newline="") as f:
+        pairs = read_read_pairs(f.read())
+    for pair in pairs:
+        for source in pair:
+            if not exists(source):
+                raise FileNotFoundError(f"Input read listed in manifest does not exist: {source}")
+            shutil.move(source, target)
+
+
+def mark_species_complete(species_name):
+    """Remove shared software only after every species cleanup succeeds."""
+    if basename(species_name) != species_name:
+        raise ValueError("Invalid species folder name")
+    root = os.path.abspath("..")
+    expected_path = os.path.join(root, ".species_cleanup.expected")
+    with open(expected_path) as f:
+        expected = int(f.read().strip())
+    marker_dir = os.path.join(root, ".species_cleanup")
+    os.makedirs(marker_dir, exist_ok=True)
+    marker = os.path.join(marker_dir, species_name + ".done")
+    open(marker, "a").close()
+    completed = [name for name in os.listdir(marker_dir) if name.endswith(".done")]
+    if len(completed) >= expected:
+        software = os.path.join(root, "Software")
+        retired_software = software + ".cleanup-" + uuid.uuid4().hex
+        try:
+            os.rename(software, retired_software)
+        except FileNotFoundError:
+            return
+        if os.path.islink(retired_software):
+            os.unlink(retired_software)
+        else:
+            shutil.rmtree(retired_software)
+
+
+def read_job_specs(config_text):
+    specs = []
+    for line in config_text.splitlines()[1:]:
+        fields = line.split()
+        if len(fields) >= 2:
+            specs.append((fields[0], fields[1:-1], fields[-1]))
+    return specs
+
+
+def build_submission_script(config_text, start_at=None, shared_software=False):
+    """Build submissions, resolving only dependencies included in this run."""
+    specs = read_job_specs(config_text)
+    if shared_software:
+        specs = [spec for spec in specs if spec[0] != "remove_software.sh"]
+    if start_at is not None:
+        starts = [i for i, spec in enumerate(specs) if spec[0] == start_at]
+        if not starts:
+            raise ValueError(f"Unknown retry stage: {start_at}")
+        specs = specs[starts[0]:]
+    active_names = {basename(script).split(".")[0] for script, _, _ in specs}
+    commands = []
+    for script, dependencies, memory in specs:
+        deps = [basename(dep).split(".")[0] for dep in dependencies
+                if basename(dep).split(".")[0] in active_names]
+        command = f'{basename(script).split(".")[0]}=$(sbatch --parsable'
+        if deps:
+            deprefs = ["$" + "{" + dep + "}" for dep in deps]
+            command += " --dependency=afterany:" + ":".join(deprefs)
+        command += f" --mem={memory} {script})"
+        commands.append(command)
+    return "\n".join(commands) + "\n"
+
+
+def write_submission_script(start_at=None):
+    with open("Config/sbatch.config.txt") as f:
+        config_text = f.read()
+    shared_software = (
+        not isdir("Software")
+        and isdir("../Software")
+        and exists("../.species_cleanup.expected")
+    )
+    script = build_submission_script(config_text, start_at, shared_software)
+    with open("HPC_T_Assembly_Single.sh", "w") as f:
+        f.write(script)
+        if any(line.startswith("cleanup=") for line in script.splitlines()):
+            f.write('printf \'%s\\n\' "$cleanup" > cleanup.jobid\n')
+    return shared_software
+
+
+def submit_jobs(start_at=None):
+    write_submission_script(start_at)
+    return system("bash HPC_T_Assembly_Single.sh")
+
+
+def get_config_threads(configf):
+    with open(configf) as f:
+        for line in f:
+            if line.startswith("Threads:"):
+                value = int(line.split(":", 1)[1].strip())
+                if value < 1:
+                    raise ValueError("Configured thread count must be positive")
+                return value
+    raise ValueError(f"Missing Threads setting in {configf}")
+
+
+def write_parallel_commands(file_handle, commands, batch_size):
+    """Run bounded batches concurrently and wait for every child process."""
+    batch_size = max(1, batch_size)
+    for start in range(0, len(commands), batch_size):
+        for command in commands[start:start + batch_size]:
+            file_handle.write(command + " &\n")
+        file_handle.write("batch_status=0\n")
+        file_handle.write("for child_pid in $(jobs -p); do wait \"$child_pid\" || batch_status=1; done\n")
+        file_handle.write("if [ \"$batch_status\" -ne 0 ]; then exit 1; fi\n")
+
+
+def mainhpc(threads=None):
     reqd = getreqs()  # Get complete path to required software
     with open("HPC_T_Assembly_Data.txt") as f:
         allreads = f.read()
         l = allreads.split("#")
     if len(l) > 1:  # Determine if multiple species
         Multispecie = True
-        left = ""
-        right = ""
-        for x in allreads.split("\n"):  # Split reads into left and right
-            if "fastq" in x:
-                left, right = left + x.split(",")[0], right + x.split(",")[1]
-            else:
-                left, right = left + x, right + x
-            left, right = left + "\n", right + "\n"
-        left, right = left.split("#"), right.split("#")
-
         species = []
-        with open("HPC_T_Assembly_Multiple.sh", "w") as genscript:  # Generate script to run multiple species
-            for specie, rreads in zip(left[1:], right[1:]):
-                specie = specie.split("\n")
-                specie_name = "_".join(specie[0].split())
-                species.append(specie_name)
-                lreads = [abspath(expandvars(x)) for x in specie[1:] if len(x) > 5]
-                rreads = [abspath(expandvars(x)) for x in rreads.split("\n")[1:] if len(x) > 5]
-                s(f"mkdir {specie_name}")
-                s(f"cp -r Config {specie_name}")
-                s(f"cp HPC_T_Assembly.py {specie_name}")
-                with open(f"{specie_name}/HPC_T_Assembly_Data.txt", "w") as f:
-                    f.write("\n".join(f"{x},{y}" for x, y in zip(lreads, rreads)))
+        groups = [group for group in allreads.split("#")[1:] if group.strip()]
+        for group_number, group in enumerate(groups, 1):
+            rows = group.splitlines()
+            if not rows or not rows[0].strip():
+                continue
+            requested_name = "_".join(rows[0].split())
+            specie_name = re.sub(r"[^A-Za-z0-9_.-]", "_", requested_name).strip("._")
+            if not specie_name:
+                specie_name = f"species_{group_number}"
+            if specie_name in species:
+                raise ValueError(f"Species names must be unique after normalization: {specie_name!r}")
+            pairs = read_read_pairs("\n".join(rows[1:]))
+            if not pairs:
+                raise ValueError(f"No paired reads listed for species {requested_name!r}")
+            species.append(specie_name)
+            os.makedirs(specie_name, exist_ok=True)
+            shutil.copytree("Config", f"{specie_name}/Config", dirs_exist_ok=True)
+            shutil.copy2("HPC_T_Assembly.py", specie_name)
+            write_read_pairs(
+                f"{specie_name}/HPC_T_Assembly_Data.txt",
+                [(abspath(expandvars(left)), abspath(expandvars(right))) for left, right in pairs],
+            )
 
+        if not species:
+            raise ValueError("The multi-species manifest contains no species groups")
+        with open("HPC_T_Assembly_Multiple.sh", "w") as genscript:
+            for specie_name in species:
                 genscript.write(f"cd {specie_name}\npython HPC_T_Assembly.py multispecie\ncd ..\n")
+        if remove():
+            if isdir(".species_cleanup"):
+                shutil.rmtree(".species_cleanup")
+            with open(".species_cleanup.expected", "w") as f:
+                f.write(str(len(species)))
         if ExecuteNow:  # If execute now --> run multispecie
             s("bash HPC_T_Assembly_Multiple.sh")
         exit()
-    with open("HPC_T_Assembly_Data.txt") as f:  # For single specie
-        rleft, rright = [], []
-        for x in f.read().split("\n"):
-            if len(x) > 5:
-                rleft.append(x.split(",")[0])
-                rright.append(x.split(",")[1])
-
-    left, right = [], []
-    for x, y in zip(rleft, rright):
-        with open("HPC_T_Assembly_Data.txt", "w") as f:
-            f.write(f"{abspath(expandvars(x))},{abspath(expandvars(y))}\n")
-            left.append(abspath(expandvars(x)))
-            right.append(abspath(expandvars(y)))
-
-    threadsperrun = threads // len(left)
+    pairs = read_read_pairs(allreads)
+    if not pairs:
+        raise ValueError("HPC_T_Assembly_Data.txt contains no paired reads")
+    pairs = [(abspath(expandvars(x)), abspath(expandvars(y))) for x, y in pairs]
+    write_read_pairs("HPC_T_Assembly_Data.txt", pairs)
+    left = [pair[0] for pair in pairs]
+    right = [pair[1] for pair in pairs]
+    threads = get_config_threads("Config/fastp.config.txt")
+    bowtie_threads = get_config_threads("Config/bowtie2.config.txt")
+    salmon_threads = get_config_threads("Config/salmon.config.txt")
+    threadsperrun = max(1, bowtie_threads // len(left))
+    salmon_threadsperrun = max(1, salmon_threads // len(left))
+    fastp_threads = min(threads, 16)
     with open("Config/fastp.config.txt", "r") as f:
         trim = f.read()
 
@@ -77,23 +254,26 @@ def mainhpc(threads):
             sbatchc += f'#SBATCH {option}\n'
 
     command = " ".join(t[2][1:-1]) + " ".join(t[3][1:])
-    left = [x for x in left if len(x) > 4]
     with open(f"pipeline.sh", "w") as f:
         f.write("#!/bin/bash\n")
         f.write(sbatchc)
         f.write(f'cd {gc()}\n')
+        fastp_commands = []
         for i in range(len(left)):
-            lefti, righti, leftio, rightio = left[i], right[i], left[i].split('.')[0], right[i].split('.')[0]
-            f.write(command.format(**locals()) + "\n")
+            lefti = shlex.quote(left[i])
+            righti = shlex.quote(right[i])
+            leftio = shlex.quote(read_stem(left[i]))
+            rightio = shlex.quote(read_stem(right[i]))
+            fastp_commands.append(command.format(**locals()))
+        write_parallel_commands(f, fastp_commands, max(1, threads // fastp_threads))
 
     # Assembly
     lreads = []
     rreads = []
 
     for i in range(len(left)):
-        if len(left[i]) > 4:
-            lreads.append(f"{left[i].split('.')[0]}_cleaned.fastq")
-            rreads.append(f"{right[i].split('.')[0]}_cleaned.fastq")
+        lreads.append(f"{read_stem(left[i])}_cleaned.fastq")
+        rreads.append(f"{read_stem(right[i])}_cleaned.fastq")
 
     data = [
         {
@@ -118,8 +298,8 @@ def mainhpc(threads):
         f.write(spades)
 
     # Second Assembler TrinityRnaSeq
-    tleft = ",".join(lreads)
-    tright = ",".join(rreads)
+    tleft = shlex.quote(",".join(lreads))
+    tright = shlex.quote(",".join(rreads))
     trinity = getcommand("Config/trinity.config.txt").format(**locals())
     with open("trinity.sh","w") as f:
         f.write("#!/bin/bash\n")
@@ -149,8 +329,8 @@ time trinityrnaseq-v2.15.2/Trinity --seqType fq --max_memory 300G --left SRR5759
 #SBATCH --time 00:15:00
 """ + f"#SBATCH --account {getaccount('Config/assembly.config.txt')}\n" + "#SBATCH -o Selector.out\n")
         f.write(f'cd {gc()}\n')
-        f.write(r"""perl Software/trinityrnaseq-v2.15.2/util/TrinityStats.pl trinity_out.Trinity.fasta > trinity_stats.txt
-perl Software/trinityrnaseq-v2.15.2/util/TrinityStats.pl transcripts.fasta > spades_stats.txt
+        selector = r"""perl TRINITY_STATS_PATH/util/TrinityStats.pl trinity_out.Trinity.fasta > trinity_stats.txt
+perl TRINITY_STATS_PATH/util/TrinityStats.pl transcripts.fasta > spades_stats.txt
 
 # Extract first N50 values using robust pattern matching
 n50_trinity=$(grep -m1 'Contig N50:[[:space:]]*[0-9]\+' trinity_stats.txt | awk '{print $NF}')
@@ -166,7 +346,8 @@ elif [ "$n50_spades" -gt "$n50_trinity" ]; then
 else
     echo "Both files have identical N50: $n50_trinity"
 fi
-""")
+""".replace("TRINITY_STATS_PATH", reqd["trinityrnaseq"])
+        f.write(selector)
 
     # Statistics
     # trinity = f"perl {reqd['trinityrnaseq']}/util/TrinityStats.pl ASSEMBLY/ELA_spades_k_auto/transcripts.fasta > spadestats.txt"
@@ -197,7 +378,9 @@ fi
     salmon = []
     salmonpos = []
     for x, y in zip(lreads, rreads):
-        ID = x.split("_cleaned.fastq")[0].split("/")[-1]
+        ID = shlex.quote(os.path.basename(x.split("_cleaned.fastq")[0]))
+        x = shlex.quote(x)
+        y = shlex.quote(y)
         # salmon.append(f'{reqd["salmon"]}/bin/salmon quant --index Data/Salmon_Index --libType A -1 {x} -2 {y} --dumpEq --output ELA_SALMON_{ID} &')
         salmon.append(getcommand("Config/salmon.config.txt").format(**locals()))
         # salmonpos.append(f'gunzip -k ELA_SALMON_{ID}/aux_info/eq_classes.txt.gz')
@@ -213,13 +396,13 @@ fi
         f.write("#!/bin/bash\n")
         f.write(getsbatch("Config/salmon.config.txt"))
         f.write(f'cd {gc()}\n')
-        f.write(" &\n".join(salmon))
+        write_parallel_commands(f, salmon, max(1, salmon_threads // salmon_threadsperrun))
 
     with open("salmonpos.sh", "w") as f:
         f.write("#!/bin/bash\n")
         f.write(getsbatch("Config/salmonpos.config.txt"))
         f.write(f'cd {gc()}\n')
-        f.write(" &\n".join(salmonpos))
+        write_parallel_commands(f, salmonpos, get_config_threads("Config/salmonpos.config.txt"))
 
     with open("corset.sh", "w") as f:
         f.write("#!/bin/bash\n")
@@ -243,7 +426,11 @@ fi
     index = getcommand("Config/bowtie2index.config.txt").format(**locals())
     bowtie = []
     for x, y in zip(lreads, rreads):
-        ID = x.split("_cleaned.fastq")[0].split("/")[-1].split("_")[0]
+        sample_id = os.path.basename(x.split("_cleaned.fastq")[0])
+        sample_id = re.sub(r"_[12]$", "", sample_id)
+        ID = shlex.quote(sample_id)
+        x = shlex.quote(x)
+        y = shlex.quote(y)
 
         bowtie.append(getcommand("Config/bowtie2.config.txt").format(**locals()))
 
@@ -258,7 +445,7 @@ fi
         f.write("#!/bin/bash\n")
         f.write(getsbatch("Config/bowtie2.config.txt"))
         f.write(f'cd {gc()}\n')
-        f.write(" &\n".join(bowtie))
+        write_parallel_commands(f, bowtie, max(1, bowtie_threads // max(1, threadsperrun)))
 
     # Busco
     busco = getcommand("Config/busco.config.txt").format(**locals())
@@ -297,7 +484,7 @@ fi
             f.write("yes | rm -rf ../Software\n")
 
     if argv[1:2] == ["Execute"] or ExecuteNow:
-        s("bash HPC_T_Assembly_Single.sh")
+        submit_jobs()
 
 
 def remove():
@@ -386,11 +573,8 @@ def getreqs():
 def cleanup():
     with open("Config/sbatch.config.txt") as f:
         sbatchc = f.read()
-        if "Retries" not in sbatchc:
-            retry = True
-            lives=str(int(sbatchc.split("\n")[0].split(",")[-1]))
-        else:
-            retry = False
+    retry_field = sbatchc.splitlines()[0].split(",")[-1].strip()
+    max_retries = int(retry_field) if retry_field.isdigit() else 0
 
     with open("cleanup.sh", "w") as f:
         f.write("""#!/bin/bash
@@ -400,24 +584,19 @@ def cleanup():
 #SBATCH --mem=12GB
 #SBATCH --time 00:15:00
 """ + f"#SBATCH --account {getaccount('Config/assembly.config.txt')}\n" + "#SBATCH -o Verification_Cleaning.out\n")
-        if retry:
-            f.write(f"remaining={lives}\n")
-        else:
-            f.write("remaining=0\n")
-        f.write("""sl=0
-fix() {
-  if [[ $remaining -eq 0 ]]; then
-    echo "Error: Could not fix the issue. "
+        f.write(f"max_retries={max_retries}\n")
+        f.write("retry_state=cleanup.retry.state\n[ -f \"$retry_state\" ] || printf '0\\n' > \"$retry_state\"\n")
+        f.write("""fix() {
+  failed_script=$1
+  attempts=$(cat "$retry_state")
+  if [[ $attempts -ge $max_retries ]]; then
+    echo "Error: Could not fix the issue after $attempts retries."
     exit 1
   fi
-  line=${1:-0}
-  line=$((line - sl)) 
-  sl=$((sl + line))
-  tail -n +"$((line + 1))" HPC_T_Assembly_Single.sh | sed '1s/--dependency=afterany:[^ ]*//' > HPC_T_Assembly_Single_tmp.sh
-  mv HPC_T_Assembly_Single_tmp.sh HPC_T_Assembly_Single.sh
-  sed -i -E "s/^sl=[0-9]+/sl=sl/" "cleanup.sh"
-  sed -i -E "s/^remaining=[0-9]+/remaining=$((remaining - 1))/" "cleanup.sh"
-  bash HPC_T_Assembly_Single.sh
+  attempts=$((attempts + 1))
+  printf '%s\n' "$attempts" > "$retry_state"
+  python HPC_T_Assembly.py retry "$failed_script"
+  exit 1
 }
 
 # Read number of reads from Processes.txt
@@ -427,14 +606,14 @@ reads=$(sed -n '2p' Processes.txt | awk -F'|' '{print $2}')
 cat fastp.err | grep CANCELLED > fastp.verification
 if grep -q "CANCELLED" fastp.verification; then
   echo "FastP Verification Failed"
-  fix 0
+  fix pipeline.sh
   exit 1
 fi               
 cat fastp.* | grep "Duplication rate:" > fastp.verification
 fastp_lines=$(wc -l < fastp.verification)
 if [ "$fastp_lines" -lt "$reads" ]; then
   echo "Fastp Verification Failed"
-  fix 0
+  fix pipeline.sh
   exit 1
 fi
 
@@ -443,12 +622,12 @@ cat assembly.* | grep "Assembling finished" > assembly.verification
 cat assembly.err | grep CANCELLED >> assembly.verification
 if grep -q "CANCELLED" assembly.verification; then
   echo "Assembly Verification Failed"
-  fix 1
+  fix assembly.sh
   exit 1
 fi  
 if ! grep -q "Assembling finished." assembly.verification; then
   echo "Assembly Verification Failed"
-  fix 1
+  fix assembly.sh
   exit 1
 fi
 
@@ -459,14 +638,14 @@ program completed" > cdhit.verification
 cat cdhit.err | grep CANCELLED >> cdhit.verification
 if grep -q "CANCELLED" cdhit.verification; then
   echo "CDHIT Verification Failed"
-  fix 2
+  fix cdhit.sh
   exit 1
 fi  
 if ! grep -q "writing new database
 writing clustering information
 program completed" cdhit.verification; then
   echo "CDHIT Verification Failed"
-  fix 2
+  fix cdhit.sh
   exit 1
 fi
 
@@ -475,12 +654,12 @@ cat salmonidx.out | grep "Edges construction time:" > salmonidx.verification
 cat salmonidx.err | grep CANCELLED >> salmonidx.verification
 if grep -q "CANCELLED" salmonidx.verification; then
   echo "SalmonIDX Verification Failed"
-  fix 3
+  fix salmonidx.sh
   exit 1
 fi  
 if ! grep -q "Edges construction time:" salmonidx.verification; then
   echo "Salmon idx Verification Failed"
-  fix 3
+  fix salmonidx.sh
   exit 1
 fi
 
@@ -488,14 +667,14 @@ fi
 cat salmon.err | grep CANCELLED > salmon.verification
 if grep -q "CANCELLED" salmon.verification; then
   echo "Salmon Verification Failed"
-  fix 4
+  fix salmon.sh
   exit 1
 fi  
 cat salmon.* | grep "done writing equivalence class counts." > salmon.verification
 salmon_lines=$(wc -l < salmon.verification)
 if [ "$salmon_lines" -lt "$reads" ]; then
   echo "Salmon Verification Failed"
-  fix 4
+  fix salmon.sh
   exit 1
 fi
 
@@ -504,32 +683,32 @@ cat Corset.* | grep "Finished" > corset.verification
 cat Corset.err | grep CANCELLED >> corset.verification
 if grep -q "CANCELLED" corset.verification; then
   echo "Corset Verification Failed"
-  fix 6
+  fix corset.sh
   exit 1
 fi  
 if ! grep -q "Finished" corset.verification; then
   echo "Corset Verification Failed"
-  fix 6
+  fix corset.sh
   exit 1
 fi
 # Verify SalmonPos
 cat salmonpos.err | grep "No such file or directory" > salmonpos.verification
 if grep -q "No such file or directory" salmonpos.verification; then
     echo "SalmonPos Verification Failed"
-    fix 5
+    fix salmonpos.sh
     exit 1
 fi
 # Verify BowtieIDX
 cat bowtie2index.err | grep CANCELLED > bowtie.verification
 if grep -q "CANCELLED" bowtie.verification; then
   echo "BowtieIDX Verification Failed"
-  fix 9
+  fix bowtieindex.sh
   exit 1
 fi 
 cat bowtie2index.err | grep "Renaming Index" > bowtie.verification
 if ! grep -q "Renaming Index" bowtie.verification; then
     echo "Bowtie Index Verification Failed"
-    fix 9
+    fix bowtieindex.sh
     exit 1
 fi
   
@@ -537,14 +716,14 @@ fi
 cat bowtie2.err | grep CANCELLED > bowtie2.verification
 if grep -q "CANCELLED" bowtie2.verification; then
   echo "Bowtie2 Verification Failed"
-  fix 11
+  fix bowtie2.sh
   exit 1
 fi  
 cat bowtie2.* | grep "overall alignment rate" > bowtie.verification
 bowtie_lines=$(wc -l < bowtie.verification)
 if [ "$bowtie_lines" -lt "$reads" ]; then
   echo "Bowtie2 Verification Failed"
-  fix 11
+  fix bowtie2.sh
   exit 1
 fi
 
@@ -552,50 +731,56 @@ fi
 cat busco.err | grep CANCELLED > busco.verification
 if grep -q "CANCELLED" busco.verification; then
   echo "Busco Verification Failed"
-  fix 10
+  fix busco.sh
   exit 1
 fi
 cat busco.* | grep "BUSCO analysis failed!" > busco.verification
 if grep -q "BUSCO analysis failed!" busco.verification; then
     echo "Busco Verification Failed"
-    fix 10
+    fix busco.sh
     exit 1
 fi
 
+if grep -q '^transdecoder.sh ' Config/sbatch.config.txt; then
 #Verify Transdecoder 
-cat transdecoder.err | grep CANCELLED > transdecoder.verification
-if grep -q "CANCELLED" transdecoder
+grep "CANCELLED" transdecoder.err > transdecoder.verification || true
+if grep -q "CANCELLED" transdecoder.verification
 then
   echo "Transdecoder Verification Failed"
-  fix 12
+  fix transdecoder.sh
   exit 1
 fi
 cat transdecoder.* | grep "Done preparing long ORFs" > transdecoder.verification
 if ! grep -q "Done preparing long ORFs" transdecoder.verification; then
     echo "Transdecoder Verification Failed"
-    fix 12
+    fix transdecoder.sh
     exit 1
 fi
 
 #Verify Transdecoder Predict
-cat transdecoder_predict.err  | grep "transdecoder is finished." > transdecoder_predict.verification
-if ! grep -q "transdecoder is finished." transdecoder_predict
+grep "transdecoder is finished." transdecoder_predict.err > transdecoder_predict.verification || true
+if ! grep -q "transdecoder is finished." transdecoder_predict.verification
 then
   echo "Transdecoder Predict Verification Failed"
-  fix 13
+  fix transdecoder_predict.sh
   exit 1
 fi
-cat transdecoder_predict.err | grep CANCELLED > transdecoder_predict.verification
-if grep -q "CANCELLED" transdecoder_predict
+grep CANCELLED transdecoder_predict.err >> transdecoder_predict.verification || true
+if grep -q "CANCELLED" transdecoder_predict.verification
 then
   echo "Transdecoder Predict Verification Failed"
-  fix 13
+  fix transdecoder_predict.sh
   exit 1
+fi
 fi
 """)
-        if remove():
-            f.write("bash remove_software.sh\n")
-
+        multi_species_shared = (
+            not isdir("Software")
+            and isdir("../Software")
+            and exists("../.species_cleanup.expected")
+        )
+        if remove() and not multi_species_shared:
+            f.write("bash remove_software.sh || exit 1\n")
         f.write("""mkdir Scripts
 mv *.sh Scripts
 
@@ -621,8 +806,8 @@ mkdir ORF
 mv -f transcripts_Corset.fasta.transdecoder* ORF
 
 
-mkdir Data2
-mv $(cat HPC_T_Assembly_Data.txt) Data2
+mkdir -p Data2
+python HPC_T_Assembly.py move-inputs || exit 1
 
 
 mv -f Data/Salmon_Index Salmon
@@ -646,9 +831,12 @@ mkdir Intermediate_Files
 mv * Intermediate_Files
 mv Intermediate_Files/Transcripts .
 mv Intermediate_Files/ORF .   
+mv Intermediate_Files/HPC_T_Assembly.py .
 mkdir Statistics
 mv Intermediate_Files/*stats.txt Statistics 
 """)
+        if remove() and multi_species_shared:
+            f.write('python HPC_T_Assembly.py mark-species-complete "$(basename "$PWD")" || exit 1\n')
 
 
 
@@ -714,12 +902,25 @@ def install_missing(name=None, instlist=None):  # Install required software
 from os import system as s
 from os import listdir as ls
 from os.path import isdir
-from os import sched_getaffinity as threadcounter
 import yaml
-from datetime import datetime
 from time import sleep
 
 if __name__ == "__main__":
+    if argv[1:2] == ["retry"]:
+        if len(argv) < 3:
+            raise SystemExit("retry mode requires the failed job script name")
+        submit_jobs(argv[2])
+        raise SystemExit
+    if argv[1:2] == ["move-inputs"]:
+        move_input_reads()
+        raise SystemExit
+    if argv[1:2] == ["mark-species-complete"]:
+        if len(argv) < 3:
+            raise SystemExit("mark-species-complete requires a species folder name")
+        mark_species_complete(argv[2])
+        raise SystemExit
+    if os.path.exists("cleanup.retry.state"):
+        os.remove("cleanup.retry.state")
     if argv[1:2] == []:
         print("=== Main Menu ===")
         print("1. Execute now\n2. Edit Configuration Batch and Execute Manually")
@@ -728,48 +929,16 @@ if __name__ == "__main__":
     if argv[1:2] == []:
         install_missing()
     if "HPC_T_Assembly_Data.txt" not in ls():
-        s("ls Data/*.fastq > r.txt")
-        with open("r.txt") as f:
-            ld = f.read()
+        write_read_pairs("HPC_T_Assembly_Data.txt", discover_read_pairs())
 
-        ld = ld.split()
-
-        left = []
-        right = []
-        for x in ld:
-            if "_1" in x:
-                left.append(x)
-            elif "_2" in x:
-                right.append(x)
-
-        with open("HPC_T_Assembly_Data.txt", "w") as f:
-            f.write("\n".join(f"{x},{y}" for x, y in zip(left, right)))
-
-    with open("Config/sbatch.config.txt") as f:
-        sbatchc = f.read()
-
-    sbatchcmd = ""
-    for line in sbatchc.split("\n")[1:]:
-        if len(line) > 5:
-            cline = line.split()
-            if len(cline) == 2:
-                sbatchcmd += f'{cline[0].split(".")[0]}=$(sbatch --parsable --mem={cline[1]} {cline[0]})\n'
-            else:
-                sbatchcmd += f'{cline[0].split(".")[0]}=$(sbatch --parsable --dependency=afterany:${":$".join(['{' + x.split(".")[0] + '}' for x in cline[1:-1]])} --mem={cline[-1]} {cline[0]})\n'
-
-    with open("HPC_T_Assembly_Single.sh", "w") as f:
-        f.write(sbatchcmd)
-
+    write_submission_script()
     with open("HPC_T_Assembly_Data.txt") as f:
-        left = f.read().split("\n")
-
-    lenleft = len(left)
+        manifest_text = f.read()
+    lenleft = 0 if "#" in manifest_text else len(read_read_pairs(manifest_text))
 
     with open("Processes.txt", "w") as f:
         f.write("Script | Number of Processes\n")
         f.write(
             f"pipeline.sh | {lenleft}\nassembly.sh | 1\nsalmonidx.sh | 1\nsalmon.sh | {lenleft}\nsalmonpos.sh | {lenleft}\ncorset.sh | 1\ncorset2transcript.sh | 1\nbowtieindex.sh | 1\nbowtie2.sh | {lenleft}\ntrasdecoder.sh | 1\ntransdecoder_predict.sh | 1\n")
     cleanup()
-    from os import sched_getaffinity as threadcounter
-
-    mainhpc(len(threadcounter(0)))
+    mainhpc()

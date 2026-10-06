@@ -1,0 +1,257 @@
+import io
+import os
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+import HPC_T_Assembly as pipeline
+from HPC_T_Assembly_Config_Utils import busco_config_for_lineage
+
+
+SBATCH_CONFIG = """# Script, Dependencies, Memory, Retries
+pipeline.sh 12g
+assembly.sh pipeline.sh 12g
+statistics.sh corset2transcript.sh 12g
+bowtieindex.sh corset2transcript.sh 12g
+busco.sh bowtieindex.sh 12g
+bowtie2.sh bowtieindex.sh 12g
+transdecoder.sh bowtie2.sh 12g
+transdecoder_predict.sh transdecoder.sh 12g
+cleanup.sh transdecoder_predict.sh busco.sh statistics.sh 12g
+remove_software.sh cleanup.sh 12g
+"""
+
+
+class ManifestTests(unittest.TestCase):
+    def test_manifest_accepts_trailing_blank_line_and_quoted_paths(self):
+        rows = '\"/reads/sample, one_R1.fastq\",\"/reads/sample, one_R2.fastq\"' + "\n\n"
+        self.assertEqual(
+            pipeline.read_read_pairs(rows),
+            [("/reads/sample, one_R1.fastq", "/reads/sample, one_R2.fastq")],
+        )
+
+    def test_discovers_paired_compressed_and_uncompressed_reads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("sample_1.fastq.gz", "sample_2.fastq.gz", "another_1.fq", "another_2.fq"):
+                (root / name).write_text("")
+            pairs = pipeline.discover_read_pairs(str(root))
+            self.assertEqual(len(pairs), 2)
+            self.assertEqual(pipeline.read_stem(str(root / "sample_1.fastq.gz")), str(root / "sample_1"))
+
+    def test_moves_every_pair_without_shell_word_splitting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "reads with spaces"
+            source.mkdir()
+            names = [
+                ("sample, one_R1.fastq", "sample, one_R2.fastq"),
+                ("sample two_R1.fastq", "sample two_R2.fastq"),
+            ]
+            pairs = []
+            for pair in names:
+                full_pair = []
+                for name in pair:
+                    path = source / name
+                    path.write_text("reads")
+                    full_pair.append(str(path))
+                pairs.append(tuple(full_pair))
+            manifest = root / "manifest.csv"
+            pipeline.write_read_pairs(manifest, pairs)
+            destination = root / "Data2"
+            pipeline.move_input_reads(str(manifest), str(destination))
+            self.assertEqual(
+                sorted(path.name for path in destination.iterdir()),
+                sorted(name for pair in names for name in pair),
+            )
+
+    def test_repeated_busco_config_requests_keep_independent_lineages(self):
+        original = "busco -l {buscolineage}"
+        first = busco_config_for_lineage(original, "metazoa_odb10")
+        second = busco_config_for_lineage(original, "vertebrata_odb10")
+        self.assertIn("-l metazoa_odb10", first)
+        self.assertIn("-l vertebrata_odb10", second)
+        self.assertIn("{buscolineage}", original)
+
+
+class SubmissionTests(unittest.TestCase):
+    def test_retry_starts_by_job_name_and_filters_old_dependencies(self):
+        script = pipeline.build_submission_script(SBATCH_CONFIG, "busco.sh")
+        self.assertTrue(script.startswith("busco=$(sbatch --parsable --mem=12g busco.sh)"))
+        self.assertIn("bowtie2=$(sbatch --parsable --mem=12g bowtie2.sh)", script)
+        dep = "$" + "{busco}"
+        predict_dep = "$" + "{transdecoder_predict}"
+        self.assertIn(
+            "cleanup=$(sbatch --parsable --dependency=afterany:" + predict_dep + ":" + dep
+            + " --mem=12g cleanup.sh)",
+            script,
+        )
+        self.assertNotIn("--dependency=afterany:", script.splitlines()[0])
+        self.assertNotIn("--dependency=afterany:}", script)
+
+    def test_fake_sbatch_captures_valid_initial_and_retry_dependencies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            fake_sbatch = fake_bin / "sbatch"
+            fake_sbatch.write_text(
+                "#!/bin/bash\n"
+                "printf '%s\\n' \"$*\" >> \"$SBATCH_LOG\"\n"
+                "echo 700\n"
+            )
+            fake_sbatch.chmod(0o755)
+            log = root / "sbatch.log"
+            env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}", SBATCH_LOG=str(log))
+
+            for start_at in (None, "busco.sh"):
+                log.write_text("")
+                script = pipeline.build_submission_script(SBATCH_CONFIG, start_at)
+                subprocess.run(["bash", "-c", script], cwd=root, env=env, check=True)
+                calls = log.read_text().splitlines()
+                self.assertTrue(calls)
+                self.assertTrue(all("afterany:" not in call or "afterany:}" not in call for call in calls))
+                self.assertTrue(all("--dependency=afterany:" not in call or "700" in call for call in calls))
+
+    def test_shared_software_is_not_submitted_as_a_species_job(self):
+        script = pipeline.build_submission_script(SBATCH_CONFIG, shared_software=True)
+        self.assertNotIn("remove_software=", script)
+        self.assertIn("cleanup=", script)
+
+    def test_retry_counter_and_orf_checks_are_generated_from_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Config").mkdir()
+            (root / "Config" / "sbatch.config.txt").write_text(
+                "# Script, Dependencies, Memory, 2\npipeline.sh 12g\ncleanup.sh pipeline.sh 12g\n"
+            )
+            (root / "Config" / "assembly.config.txt").write_text(
+                "Nodes: 1\nThreads: 1\nMemory: 12GB\nAccount: test\nTime: 00:15:00\n"
+                "#Other Sbatch configs\n-p debug\n-o assembly.out\n-e assembly.err\n# assembly\ncommand\n"
+            )
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                pipeline.cleanup()
+            finally:
+                os.chdir(old_cwd)
+            cleanup = (root / "cleanup.sh").read_text()
+            self.assertIn("max_retries=2", cleanup)
+            self.assertIn("retry_state=cleanup.retry.state", cleanup)
+            self.assertIn('python HPC_T_Assembly.py retry \"$failed_script\"', cleanup)
+            self.assertIn("if grep -q '^transdecoder.sh ' Config/sbatch.config.txt; then", cleanup)
+
+    def test_retry_state_survives_separate_cleanup_processes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = root / "Config"
+            config.mkdir()
+            (config / "sbatch.config.txt").write_text(
+                "# Script, Dependencies, Memory, 2\npipeline.sh 12g\ncleanup.sh pipeline.sh 12g\n"
+            )
+            (config / "assembly.config.txt").write_text(
+                "Nodes: 1\nThreads: 1\nMemory: 12GB\nAccount: test\nTime: 00:15:00\n"
+                "#Other Sbatch configs\n-p debug\n-o assembly.out\n-e assembly.err\n# assembly\ncommand\n"
+            )
+            (root / "fastp.err").write_text("CANCELLED\n")
+            (root / "Processes.txt").write_text("Script | Number of Processes\npipeline.sh | 1\n")
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            fake_python = fake_bin / "python"
+            fake_python.write_text("#!/bin/bash\nprintf '%s\\n' \"$*\" >> retry-calls.log\n")
+            fake_python.chmod(0o755)
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                pipeline.cleanup()
+                env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}")
+                for expected in ("1", "2"):
+                    result = subprocess.run(
+                        ["bash", "cleanup.sh"], env=env, check=False,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    )
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(Path("cleanup.retry.state").read_text().strip(), expected)
+                result = subprocess.run(
+                    ["bash", "cleanup.sh"], env=env, check=False,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(Path("cleanup.retry.state").read_text().strip(), "2")
+                self.assertEqual(len(Path("retry-calls.log").read_text().splitlines()), 2)
+            finally:
+                os.chdir(old_cwd)
+
+
+class MultiSpeciesCleanupTests(unittest.TestCase):
+    def test_shared_software_remains_until_every_species_finishes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            software = root / "Software"
+            software.mkdir()
+            (root / ".species_cleanup.expected").write_text("2")
+            species_a = root / "species_a"
+            species_b = root / "species_b"
+            species_a.mkdir()
+            species_b.mkdir()
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(species_a)
+                pipeline.mark_species_complete("species_a")
+                self.assertTrue(software.exists())
+                os.chdir(species_b)
+                pipeline.mark_species_complete("species_b")
+            finally:
+                os.chdir(old_cwd)
+            self.assertFalse(software.exists())
+
+    def test_shared_software_marker_is_last_cleanup_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Software").mkdir()
+            (root / ".species_cleanup.expected").write_text("2")
+            species = root / "species_a"
+            (species / "Config").mkdir(parents=True)
+            (species / "Config" / "sbatch.config.txt").write_text(
+                "# Script, Dependencies, Memory, 0\nremove_software.sh cleanup.sh 12g\n"
+            )
+            (species / "Config" / "assembly.config.txt").write_text(
+                "Nodes: 1\nThreads: 1\nMemory: 12GB\nAccount: test\nTime: 00:15:00\n"
+                "#Other Sbatch configs\n-p debug\n-o assembly.out\n-e assembly.err\n# assembly\ncommand\n"
+            )
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(species)
+                pipeline.cleanup()
+            finally:
+                os.chdir(old_cwd)
+            generated = (species / "cleanup.sh").read_text()
+            self.assertGreater(
+                generated.index("mark-species-complete"),
+                generated.index("mv Intermediate_Files/*stats.txt Statistics"),
+            )
+
+
+class ParallelCommandTests(unittest.TestCase):
+    def test_generated_batches_wait_for_every_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp) / "completed"
+            script = io.StringIO()
+            pipeline.write_parallel_commands(
+                script,
+                [f"(sleep 0.1; echo first >> {marker})", f"(sleep 0.3; echo second >> {marker})"],
+                2,
+            )
+            script.write(f"test \"$(wc -l < {marker})\" -eq 2\n")
+            subprocess.run(["bash", "-c", script.getvalue()], check=True)
+
+    def test_generated_batches_propagate_child_failure(self):
+        script = io.StringIO()
+        pipeline.write_parallel_commands(script, ["true", "false"], 2)
+        result = subprocess.run(["bash", "-c", script.getvalue()])
+        self.assertNotEqual(result.returncode, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

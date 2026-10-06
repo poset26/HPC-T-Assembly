@@ -1,4 +1,9 @@
+import sys
+if sys.version_info < (3, 12):
+    raise SystemExit("The HPC-T-Assembly configuration web app requires Python 3.12 or newer.")
+
 from flask import Flask, request, render_template, send_file, make_response
+from HPC_T_Assembly_Config_Utils import busco_config_for_lineage
 import os
 
 #app = Flask(__name__)
@@ -23,7 +28,6 @@ def generate():
     sbatch = sbatcht if request.form.get("ORFs") == "true" else sbatch #Add ORF prediction to the pipeline if requested
     buscolineage = request.form["busco_additional_configurations"] if request.form["busco_additional_configurations"] in lineages else "nematoda_odb10"
     
-    defaultconfigs["busco"] = defaultconfigs["busco"].replace("{buscolineage}",buscolineage)
     for file_name in stdfiles:
         with open(f"{file_name}.config.txt", 'w') as file:
             file.write(f"Nodes: {sbatchconfig['nodes']}\n")
@@ -35,7 +39,10 @@ def generate():
             file.write(f"-p {sbatchconfig['partition']}\n")
             file.write(f"-o {file_name}.out\n-e {file_name}.err\n")
             file.write(f"# {file_name}\n")
-            file.write(defaultconfigs[file_name])
+            config_text = defaultconfigs[file_name]
+            if file_name == "busco":
+                config_text = busco_config_for_lineage(config_text, buscolineage)
+            file.write(config_text)
             if file_name in addconfigs:
                 file.write(f"\n{request.form[f'{file_name}_additional_configurations']}")
             
@@ -55,7 +62,8 @@ def generate():
                 file.write(f"\n{request.form[f'{file_name}_additional_configurations']}")
     with open("sbatch.config.txt", "w") as f:
         if request.form.get("retries") != "0":
-            f.write(f"# Script, Dependencies, Memory, {request.form.get("retries")}\n")
+            retry_count = request.form.get("retries")
+            f.write("# Script, Dependencies, Memory, {}\n".format(retry_count))
         else:
             f.write("# Script, Dependencies, Memory, Retries \n")
         f.write(f"{sbatchconfig['memory'][:-2]}g\n".join(sbatch))
@@ -90,12 +98,12 @@ singlecore[3]:"""{reqd[TransDecoder-]}/TransDecoder.LongOrfs
 -t transcripts_Corset.fasta""",
 singlecore[4]:"""{reqd[TransDecoder-]}/TransDecoder.Predict
 -t transcripts_Corset.fasta""",
-stdfiles[0]:"""{reqd[fastp]}/fastp
+    stdfiles[0]:"""{reqd[fastp]}/fastp
 -i {lefti}
 -I {righti}
 -o {leftio}_cleaned.fastq 
 -O {rightio}_cleaned.fastq 
--w 48
+-w {fastp_threads}
 -j {leftio}_fastp.json
 -h {leftio}_fastp.html""",
 stdfiles[1]:"""{reqd[SPAdes]}/bin/rnaspades.py
@@ -121,7 +129,8 @@ stdfiles[5]:"""{reqd[salmon]}/bin/salmon quant
 --index Data/Salmon_Index
 --libType A
 -1 {x}
--2 {y}""",
+-2 {y}
+-p {salmon_threadsperrun}""",
 stdfiles[6]:"""gunzip
 -k RNA_SALMON_{ID}/aux_info/eq_classes.txt.gz""",
 stdfiles[7]:"""{reqd[bowtie]}/bowtie2-build 
