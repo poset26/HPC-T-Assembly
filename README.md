@@ -15,6 +15,7 @@
 #### Main Code
 * Slurm
 * Python3.12+
+* PyYAML
 * pip
 * Perl
 * wget
@@ -79,7 +80,7 @@ The graphical interface only requires python3 and a python library called flask.
       `git clone https://github.com/poset26/HPC-T-Assembly.git`
  2. Install Flask
 
-     `pip install flask`
+     `pip install flask pyyaml`
 
 ## Running HPC-T-Assembly
 
@@ -176,7 +177,7 @@ The main code is HPC_T_Assembly.py, it's a python code that takes the parameters
 
 Main functions:
 * getreqs(): This function retrieves the paths to required software tools like Trinity, CD-HIT, Salmon, etc., by searching for them in pre-defined locations.
- * mainhpc(threads): This is the main function of the tool. It takes the number of available threads as input and performs the following:
+ * mainhpc(): This is the main function of the tool. It reads thread counts from the configuration files and performs the following:
    * Calls getreqs() to get software paths.
    * Checks if multiple species are present based on the HPC_T_Assembly_Data.txt file.
      * If multiple species are present, it generates separate folders for each species and creates an instance of the pipeline inside each folder to run them in parallel.
@@ -207,5 +208,4 @@ Main block:
  * Generates the main assembly pipeline script HPC_T_Assembly_Single.sh using a template and information from configuration files. This script includes steps to submit individual analysis steps using SLURM batch commands based on the defined configurations.
  * Generates a Processes.txt file summarizing the number of processes involved in each script.
  * Calls cleanup() to create the cleanup script.
- * Calls mainhpc(len(threadcounter(0))) to initiate the pipeline execution. 
-
+ * Calls mainhpc() to initiate pipeline script generation and execution.
