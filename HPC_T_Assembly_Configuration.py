@@ -15,8 +15,8 @@ def main():
 @app.route('/generate', methods=['POST'])
 def generate():  
     sbatchconfig = {"nodes":request.form["nodes"],"threads":request.form["threads"], "memory":request.form["memory"], "account":request.form["account"], "time":request.form["time"], "partition":request.form["p_flag"]} 
-    sbatch = ['pipeline.sh  ', 'assembly.sh pipeline.sh ', 'trinity.sh pipeline.sh ','selector.sh assembly.sh trinity.sh ','cdhit.sh selector.sh ', 'salmonidx.sh cdhit.sh ', 'salmon.sh salmonidx.sh ', 'salmonpos.sh salmon.sh ', 'corset.sh salmonpos.sh ', 'corset2transcript.sh corset.sh ', 'statistics.sh corset2transcript.sh ', 'bowtieindex.sh corset2transcript.sh ', 'busco.sh bowtieindex.sh ','bowtie2.sh bowtieindex.sh ', 'cleanup.sh bowtie2.sh 12g']
-    sbatcht = sbatch[:-1] + ['transdecoder.sh bowtie2.sh ', 'transdecoder_predict.sh transdecoder.sh ', 'cleanup.sh transdecoder_predict.sh 12g']
+    sbatch = ['pipeline.sh  ', 'assembly.sh pipeline.sh ', 'trinity.sh pipeline.sh ','selector.sh assembly.sh trinity.sh ','cdhit.sh selector.sh ', 'salmonidx.sh cdhit.sh ', 'salmon.sh salmonidx.sh ', 'salmonpos.sh salmon.sh ', 'corset.sh salmonpos.sh ', 'corset2transcript.sh corset.sh ', 'statistics.sh corset2transcript.sh ', 'bowtieindex.sh corset2transcript.sh ', 'busco.sh bowtieindex.sh ','bowtie2.sh bowtieindex.sh ', 'cleanup.sh bowtie2.sh busco.sh statistics.sh 12g']
+    sbatcht = sbatch[:-1] + ['transdecoder.sh bowtie2.sh ', 'transdecoder_predict.sh transdecoder.sh ', 'cleanup.sh transdecoder_predict.sh busco.sh statistics.sh 12g']
     stdfiles = ["fastp", "assembly", "trinity","cdhit" ,"salmonidx", "salmon", "salmonpos", "bowtie2index", "bowtie2", "busco"] #Use amount of threads specified by the user
     singlecore = ["Corset", "Corset2transcript","trinitystats","transdecoder", "transdecoder_predict"] #Use only 1 thread
     addconfigs = ["fastp","assembly","cdhit","Corset","bowtie2","salmon", "trinity"]
