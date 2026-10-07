@@ -9,13 +9,16 @@ import yaml
 from sys import argv
 from time import time
 import csv
+import fcntl
 import glob
 import io
+import json
 import os
 import re
 import shlex
 import shutil
 import uuid
+from contextlib import contextmanager
 
 reqd = {}
 base = ['#SBATCH -N ', '#SBATCH -n ', '#SBATCH --mem=', '#SBATCH --account ', '#SBATCH --time ']
@@ -79,30 +82,141 @@ def move_input_reads(manifest_path="HPC_T_Assembly_Data.txt", target="Data2"):
             shutil.move(source, target)
 
 
-def mark_species_complete(species_name):
+@contextmanager
+def species_cleanup_lock(root):
+    """Serialize a new cleanup run with retirement of its shared software.
+
+    The lock is released when the process exits, including after a failed job.
+    """
+    lock_path = os.path.join(os.path.abspath(root), ".species_cleanup.lock")
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def mark_species_complete(species_name, run_id=None):
     """Remove shared software only after every species cleanup succeeds."""
     if basename(species_name) != species_name:
         raise ValueError("Invalid species folder name")
     root = os.path.abspath("..")
-    expected_path = os.path.join(root, ".species_cleanup.expected")
-    with open(expected_path) as f:
-        expected = int(f.read().strip())
-    marker_dir = os.path.join(root, ".species_cleanup")
+    context = read_species_cleanup_context(run_id)
+    expected = set(context["species"])
+    if species_name not in expected:
+        raise ValueError(f"Unexpected species cleanup marker: {species_name!r}")
+    marker_dir = os.path.join(root, ".species_cleanup", context["run_id"])
     os.makedirs(marker_dir, exist_ok=True)
     marker = os.path.join(marker_dir, species_name + ".done")
-    open(marker, "a").close()
-    completed = [name for name in os.listdir(marker_dir) if name.endswith(".done")]
-    if len(completed) >= expected:
+    temporary_marker = marker + "." + uuid.uuid4().hex + ".tmp"
+    with open(temporary_marker, "w") as f:
+        f.write(context["run_id"] + "\n")
+    os.replace(temporary_marker, marker)
+    with species_cleanup_lock(root):
+        # Re-read the active run under the lock that publishes a new pointer.
+        # A newer run can replace .species_cleanup.json after this call starts
+        # and before Software is renamed.
+        active = read_species_cleanup_context()
+        if active["run_id"] != context["run_id"]:
+            return
+        completed = {
+            name[:-5] for name in os.listdir(marker_dir)
+            if name.endswith(".done")
+        }
+        if not expected.issubset(completed):
+            return
         software = os.path.join(root, "Software")
         retired_software = software + ".cleanup-" + uuid.uuid4().hex
         try:
             os.rename(software, retired_software)
         except FileNotFoundError:
             return
-        if os.path.islink(retired_software):
-            os.unlink(retired_software)
-        else:
-            shutil.rmtree(retired_software)
+    if os.path.islink(retired_software):
+        os.unlink(retired_software)
+    else:
+        shutil.rmtree(retired_software)
+
+
+def read_species_cleanup_context(run_id=None):
+    """Read and validate this species' current shared-software cleanup run."""
+    with open(".species_cleanup.json") as f:
+        pointer = json.load(f)
+    if run_id is not None and pointer.get("run_id") != run_id:
+        # Cleanup jobs keep their submitted run ID even if a later run updates
+        # this species directory's pointer.
+        pointer = {"run_id": run_id}
+    run_id = pointer.get("run_id")
+    if not isinstance(run_id, str) or not re.fullmatch(r"[a-f0-9]{32}", run_id):
+        raise ValueError("Invalid multi-species cleanup metadata; run the top-level setup again")
+    manifest_path = os.path.join("..", ".species_cleanup", run_id, "manifest.json")
+    with open(manifest_path) as f:
+        context = json.load(f)
+    if (
+        not isinstance(context, dict)
+        or context.get("run_id") != run_id
+        or not isinstance(context.get("species"), list)
+        or not context["species"]
+        or any(not isinstance(name, str) or not name or basename(name) != name for name in context["species"])
+        or len(set(context["species"])) != len(context["species"])
+    ):
+        raise ValueError("Invalid multi-species cleanup metadata; run the top-level setup again")
+    return context
+
+
+def write_species_cleanup_context(root, species_names, run_id=None):
+    """Write a run-scoped cleanup manifest into each species directory."""
+    species_names = list(species_names)
+    if not species_names or any(not name or basename(name) != name for name in species_names):
+        raise ValueError("Invalid expected species list for cleanup")
+    if len(set(species_names)) != len(species_names):
+        raise ValueError("Species names must be unique for cleanup")
+    run_id = run_id or uuid.uuid4().hex
+    if not re.fullmatch(r"[a-f0-9]{32}", run_id):
+        raise ValueError("Invalid cleanup run ID")
+    context = {"run_id": run_id, "species": species_names}
+    with species_cleanup_lock(root):
+        marker_dir = os.path.join(root, ".species_cleanup", run_id)
+        os.makedirs(marker_dir, exist_ok=True)
+        manifest_path = os.path.join(marker_dir, "manifest.json")
+        temporary_manifest = manifest_path + "." + uuid.uuid4().hex + ".tmp"
+        with open(temporary_manifest, "w") as f:
+            json.dump(context, f)
+            f.write("\n")
+        os.replace(temporary_manifest, manifest_path)
+        for species_name in species_names:
+            context_path = os.path.join(root, species_name, ".species_cleanup.json")
+            temporary_path = context_path + "." + uuid.uuid4().hex + ".tmp"
+            with open(temporary_path, "w") as f:
+                json.dump(context, f)
+                f.write("\n")
+            os.replace(temporary_path, context_path)
+    return run_id
+
+
+def clear_species_complete(species_name, run_id=None):
+    """Invalidate this species' marker before submitting a new pipeline run."""
+    if basename(species_name) != species_name:
+        raise ValueError("Invalid species folder name")
+    context = read_species_cleanup_context(run_id)
+    if species_name not in context["species"]:
+        raise ValueError(f"Unexpected species cleanup marker: {species_name!r}")
+    marker = os.path.join("..", ".species_cleanup", context["run_id"], species_name + ".done")
+    with species_cleanup_lock(os.path.abspath("..")):
+        try:
+            os.unlink(marker)
+        except FileNotFoundError:
+            pass
+
+
+def has_shared_software_context():
+    """Whether this species uses shared software owned by its parent directory."""
+    return (
+        not isdir("Software")
+        and isdir("../Software")
+        and (exists(".species_cleanup.json") or exists("../.species_cleanup.expected"))
+    )
 
 
 def read_job_specs(config_text):
@@ -141,13 +255,15 @@ def build_submission_script(config_text, start_at=None, shared_software=False):
 def write_submission_script(start_at=None):
     with open("Config/sbatch.config.txt") as f:
         config_text = f.read()
-    shared_software = (
-        not isdir("Software")
-        and isdir("../Software")
-        and exists("../.species_cleanup.expected")
-    )
+    shared_software = has_shared_software_context()
     script = build_submission_script(config_text, start_at, shared_software)
     with open("HPC_T_Assembly_Single.sh", "w") as f:
+        if shared_software and remove():
+            context = read_species_cleanup_context()
+            f.write(
+                'python HPC_T_Assembly.py clear-species-complete "$(basename "$PWD")" '
+                + shlex.quote(context["run_id"]) + " || exit 1\n"
+            )
         f.write(script)
         if any(line.startswith("cleanup=") for line in script.splitlines()):
             f.write('printf \'%s\\n\' "$cleanup" > cleanup.jobid\n')
@@ -215,13 +331,16 @@ def mainhpc(threads=None):
         if not species:
             raise ValueError("The multi-species manifest contains no species groups")
         with open("HPC_T_Assembly_Multiple.sh", "w") as genscript:
+            if remove():
+                expected_species = " ".join(shlex.quote(name) for name in species)
+                genscript.write(
+                    "python HPC_T_Assembly.py begin-species-cleanup-run "
+                    + expected_species + " || exit 1\n"
+                )
             for specie_name in species:
                 genscript.write(f"cd {specie_name}\npython HPC_T_Assembly.py multispecie\ncd ..\n")
         if remove():
-            if isdir(".species_cleanup"):
-                shutil.rmtree(".species_cleanup")
-            with open(".species_cleanup.expected", "w") as f:
-                f.write(str(len(species)))
+            write_species_cleanup_context(os.path.abspath("."), species)
         if ExecuteNow:  # If execute now --> run multispecie
             s("bash HPC_T_Assembly_Multiple.sh")
         exit()
@@ -575,6 +694,7 @@ def cleanup():
         sbatchc = f.read()
     retry_field = sbatchc.splitlines()[0].split(",")[-1].strip()
     max_retries = int(retry_field) if retry_field.isdigit() else 0
+    multi_species_shared = has_shared_software_context()
 
     with open("cleanup.sh", "w") as f:
         f.write("""#!/bin/bash
@@ -584,6 +704,12 @@ def cleanup():
 #SBATCH --mem=12GB
 #SBATCH --time 00:15:00
 """ + f"#SBATCH --account {getaccount('Config/assembly.config.txt')}\n" + "#SBATCH -o Verification_Cleaning.out\n")
+        if remove() and multi_species_shared:
+            context = read_species_cleanup_context()
+            f.write(
+                'python HPC_T_Assembly.py clear-species-complete "$(basename "$PWD")" '
+                + shlex.quote(context["run_id"]) + " || exit 1\n"
+            )
         f.write(f"max_retries={max_retries}\n")
         f.write("retry_state=cleanup.retry.state\n[ -f \"$retry_state\" ] || printf '0\\n' > \"$retry_state\"\n")
         f.write("""fix() {
@@ -774,11 +900,6 @@ then
 fi
 fi
 """)
-        multi_species_shared = (
-            not isdir("Software")
-            and isdir("../Software")
-            and exists("../.species_cleanup.expected")
-        )
         if remove() and not multi_species_shared:
             f.write("bash remove_software.sh || exit 1\n")
         f.write("""mkdir Scripts
@@ -836,7 +957,11 @@ mkdir Statistics
 mv Intermediate_Files/*stats.txt Statistics 
 """)
         if remove() and multi_species_shared:
-            f.write('python HPC_T_Assembly.py mark-species-complete "$(basename "$PWD")" || exit 1\n')
+            context = read_species_cleanup_context()
+            f.write(
+                'python HPC_T_Assembly.py mark-species-complete "$(basename "$PWD")" '
+                + shlex.quote(context["run_id"]) + " || exit 1\n"
+            )
 
 
 
@@ -917,7 +1042,17 @@ if __name__ == "__main__":
     if argv[1:2] == ["mark-species-complete"]:
         if len(argv) < 3:
             raise SystemExit("mark-species-complete requires a species folder name")
-        mark_species_complete(argv[2])
+        mark_species_complete(argv[2], argv[3] if len(argv) > 3 else None)
+        raise SystemExit
+    if argv[1:2] == ["clear-species-complete"]:
+        if len(argv) < 3:
+            raise SystemExit("clear-species-complete requires a species folder name")
+        clear_species_complete(argv[2], argv[3] if len(argv) > 3 else None)
+        raise SystemExit
+    if argv[1:2] == ["begin-species-cleanup-run"]:
+        if len(argv) < 3:
+            raise SystemExit("begin-species-cleanup-run requires the expected species names")
+        write_species_cleanup_context(os.path.abspath("."), argv[2:])
         raise SystemExit
     if os.path.exists("cleanup.retry.state"):
         os.remove("cleanup.retry.state")
