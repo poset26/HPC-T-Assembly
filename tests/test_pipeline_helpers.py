@@ -185,16 +185,64 @@ class SubmissionTests(unittest.TestCase):
 
 
 class MultiSpeciesCleanupTests(unittest.TestCase):
+    def test_old_run_cleanup_does_not_clear_current_run_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            species = root / "species_a"
+            species.mkdir()
+            old_run = "b" * 32
+            current_run = "a" * 32
+            pipeline.write_species_cleanup_context(str(root), ["species_a"], run_id=old_run)
+            pipeline.write_species_cleanup_context(str(root), ["species_a"], run_id=current_run)
+            current_marker = root / ".species_cleanup" / current_run / "species_a.done"
+            current_marker.touch()
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(species)
+                pipeline.clear_species_complete("species_a", old_run)
+            finally:
+                os.chdir(old_cwd)
+            self.assertTrue(current_marker.exists())
+
+    def test_markers_from_older_runs_do_not_satisfy_current_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            software = root / "Software"
+            software.mkdir()
+            species_a = root / "species_a"
+            species_b = root / "species_b"
+            species_a.mkdir()
+            species_b.mkdir()
+            old_marker_dir = root / ".species_cleanup" / ("b" * 32)
+            old_marker_dir.mkdir(parents=True)
+            (old_marker_dir / "species_a.done").touch()
+            (old_marker_dir / "species_b.done").touch()
+            pipeline.write_species_cleanup_context(
+                str(root), ["species_a", "species_b"], run_id="a" * 32
+            )
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(species_a)
+                pipeline.mark_species_complete("species_a")
+                self.assertTrue(software.exists())
+                os.chdir(species_b)
+                pipeline.mark_species_complete("species_b")
+            finally:
+                os.chdir(old_cwd)
+            self.assertFalse(software.exists())
+
     def test_shared_software_remains_until_every_species_finishes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             software = root / "Software"
             software.mkdir()
-            (root / ".species_cleanup.expected").write_text("2")
             species_a = root / "species_a"
             species_b = root / "species_b"
             species_a.mkdir()
             species_b.mkdir()
+            pipeline.write_species_cleanup_context(
+                str(root), ["species_a", "species_b"], run_id="a" * 32
+            )
             old_cwd = Path.cwd()
             try:
                 os.chdir(species_a)
@@ -210,9 +258,12 @@ class MultiSpeciesCleanupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "Software").mkdir()
-            (root / ".species_cleanup.expected").write_text("2")
             species = root / "species_a"
             (species / "Config").mkdir(parents=True)
+            (root / "species_b").mkdir()
+            pipeline.write_species_cleanup_context(
+                str(root), ["species_a", "species_b"], run_id="a" * 32
+            )
             (species / "Config" / "sbatch.config.txt").write_text(
                 "# Script, Dependencies, Memory, 0\nremove_software.sh cleanup.sh 12g\n"
             )
@@ -227,6 +278,7 @@ class MultiSpeciesCleanupTests(unittest.TestCase):
             finally:
                 os.chdir(old_cwd)
             generated = (species / "cleanup.sh").read_text()
+            self.assertIn('clear-species-complete "$(basename "$PWD")" ', generated)
             self.assertGreater(
                 generated.index("mark-species-complete"),
                 generated.index("mv Intermediate_Files/*stats.txt Statistics"),
