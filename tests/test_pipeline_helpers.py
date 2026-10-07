@@ -1,8 +1,12 @@
 import io
+import json
 import os
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 import HPC_T_Assembly as pipeline
@@ -203,6 +207,115 @@ class MultiSpeciesCleanupTests(unittest.TestCase):
             finally:
                 os.chdir(old_cwd)
             self.assertTrue(current_marker.exists())
+
+    def test_newer_run_published_before_retirement_keeps_software(self):
+        """A run that starts after the stale pointer read must keep Software."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            software = root / "Software"
+            software.mkdir()
+            (software / "in-use.txt").write_text("active")
+            species_a = root / "species_a"
+            species_b = root / "species_b"
+            species_a.mkdir()
+            species_b.mkdir()
+            old_run = "b" * 32
+            new_run = "c" * 32
+            pipeline.write_species_cleanup_context(
+                str(root), ["species_a", "species_b"], run_id=old_run
+            )
+            (root / ".species_cleanup" / old_run / "species_a.done").write_text(old_run + "\n")
+            published = {"done": False}
+            real_replace = pipeline.os.replace
+
+            def replace_then_publish(src, dst):
+                real_replace(src, dst)
+                if not published["done"] and os.path.basename(dst) == "species_b.done":
+                    published["done"] = True
+                    pipeline.write_species_cleanup_context(
+                        str(root), ["species_a", "species_b"], run_id=new_run
+                    )
+
+            old_cwd = Path.cwd()
+            pipeline.os.replace = replace_then_publish
+            try:
+                os.chdir(species_b)
+                pipeline.mark_species_complete("species_b", old_run)
+            finally:
+                pipeline.os.replace = real_replace
+                os.chdir(old_cwd)
+            self.assertTrue(published["done"])
+            self.assertTrue(software.exists())
+            self.assertEqual((software / "in-use.txt").read_text(), "active")
+            pointer = json.loads((species_b / ".species_cleanup.json").read_text())
+            self.assertEqual(pointer["run_id"], new_run)
+
+    def test_new_run_blocks_until_retirement_decision_finishes(self):
+        """Publication waits while the active-run check and rename are in progress."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            software = root / "Software"
+            software.mkdir()
+            species_a = root / "species_a"
+            species_b = root / "species_b"
+            species_a.mkdir()
+            species_b.mkdir()
+            old_run = "d" * 32
+            new_run = "e" * 32
+            pipeline.write_species_cleanup_context(
+                str(root), ["species_a", "species_b"], run_id=old_run
+            )
+            (root / ".species_cleanup" / old_run / "species_a.done").write_text(old_run + "\n")
+            waiting = threading.Event()
+            acquired = threading.Event()
+            real_lock = pipeline.species_cleanup_lock
+            real_listdir = pipeline.os.listdir
+            publisher = {"started": False}
+
+            @contextmanager
+            def tracking_lock(lock_root):
+                is_publisher = threading.current_thread() is publisher.get("thread")
+                if is_publisher:
+                    waiting.set()
+                with real_lock(lock_root):
+                    if is_publisher:
+                        acquired.set()
+                    yield
+
+            def publish():
+                pipeline.write_species_cleanup_context(
+                    str(root), ["species_a", "species_b"], run_id=new_run
+                )
+
+            publisher["thread"] = threading.Thread(target=publish)
+
+            def listdir(path):
+                names = real_listdir(path)
+                if os.path.basename(path) == old_run and not publisher["started"]:
+                    publisher["started"] = True
+                    publisher["thread"].start()
+                    self.assertTrue(waiting.wait(5), "new run did not reach the cleanup lock")
+                    time.sleep(0.2)
+                    publisher["blocked"] = publisher["thread"].is_alive() and not acquired.is_set()
+                return names
+
+            pipeline.species_cleanup_lock = tracking_lock
+            pipeline.os.listdir = listdir
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(species_b)
+                pipeline.mark_species_complete("species_b", old_run)
+            finally:
+                pipeline.species_cleanup_lock = real_lock
+                pipeline.os.listdir = real_listdir
+                os.chdir(old_cwd)
+                if publisher["thread"].is_alive():
+                    publisher["thread"].join(5)
+            self.assertTrue(publisher.get("blocked"))
+            self.assertFalse(publisher["thread"].is_alive())
+            pointer = json.loads((species_b / ".species_cleanup.json").read_text())
+            self.assertEqual(pointer["run_id"], new_run)
+            self.assertFalse(software.exists())
 
     def test_markers_from_older_runs_do_not_satisfy_current_run(self):
         with tempfile.TemporaryDirectory() as tmp:

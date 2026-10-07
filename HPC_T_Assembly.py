@@ -9,6 +9,7 @@ import yaml
 from sys import argv
 from time import time
 import csv
+import fcntl
 import glob
 import io
 import json
@@ -17,6 +18,7 @@ import re
 import shlex
 import shutil
 import uuid
+from contextlib import contextmanager
 
 reqd = {}
 base = ['#SBATCH -N ', '#SBATCH -n ', '#SBATCH --mem=', '#SBATCH --account ', '#SBATCH --time ']
@@ -80,12 +82,27 @@ def move_input_reads(manifest_path="HPC_T_Assembly_Data.txt", target="Data2"):
             shutil.move(source, target)
 
 
+@contextmanager
+def species_cleanup_lock(root):
+    """Serialize a new cleanup run with retirement of its shared software.
+
+    The lock is released when the process exits, including after a failed job.
+    """
+    lock_path = os.path.join(os.path.abspath(root), ".species_cleanup.lock")
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def mark_species_complete(species_name, run_id=None):
     """Remove shared software only after every species cleanup succeeds."""
     if basename(species_name) != species_name:
         raise ValueError("Invalid species folder name")
     root = os.path.abspath("..")
-    current_context = read_species_cleanup_context()
     context = read_species_cleanup_context(run_id)
     expected = set(context["species"])
     if species_name not in expected:
@@ -97,21 +114,29 @@ def mark_species_complete(species_name, run_id=None):
     with open(temporary_marker, "w") as f:
         f.write(context["run_id"] + "\n")
     os.replace(temporary_marker, marker)
-    completed = {
-        name[:-5] for name in os.listdir(marker_dir)
-        if name.endswith(".done")
-    }
-    if expected.issubset(completed) and current_context["run_id"] == context["run_id"]:
+    with species_cleanup_lock(root):
+        # Re-read the active run under the lock that publishes a new pointer.
+        # A newer run can replace .species_cleanup.json after this call starts
+        # and before Software is renamed.
+        active = read_species_cleanup_context()
+        if active["run_id"] != context["run_id"]:
+            return
+        completed = {
+            name[:-5] for name in os.listdir(marker_dir)
+            if name.endswith(".done")
+        }
+        if not expected.issubset(completed):
+            return
         software = os.path.join(root, "Software")
         retired_software = software + ".cleanup-" + uuid.uuid4().hex
         try:
             os.rename(software, retired_software)
         except FileNotFoundError:
             return
-        if os.path.islink(retired_software):
-            os.unlink(retired_software)
-        else:
-            shutil.rmtree(retired_software)
+    if os.path.islink(retired_software):
+        os.unlink(retired_software)
+    else:
+        shutil.rmtree(retired_software)
 
 
 def read_species_cleanup_context(run_id=None):
@@ -151,21 +176,22 @@ def write_species_cleanup_context(root, species_names, run_id=None):
     if not re.fullmatch(r"[a-f0-9]{32}", run_id):
         raise ValueError("Invalid cleanup run ID")
     context = {"run_id": run_id, "species": species_names}
-    marker_dir = os.path.join(root, ".species_cleanup", run_id)
-    os.makedirs(marker_dir, exist_ok=True)
-    manifest_path = os.path.join(marker_dir, "manifest.json")
-    temporary_manifest = manifest_path + "." + uuid.uuid4().hex + ".tmp"
-    with open(temporary_manifest, "w") as f:
-        json.dump(context, f)
-        f.write("\n")
-    os.replace(temporary_manifest, manifest_path)
-    for species_name in species_names:
-        context_path = os.path.join(root, species_name, ".species_cleanup.json")
-        temporary_path = context_path + "." + uuid.uuid4().hex + ".tmp"
-        with open(temporary_path, "w") as f:
+    with species_cleanup_lock(root):
+        marker_dir = os.path.join(root, ".species_cleanup", run_id)
+        os.makedirs(marker_dir, exist_ok=True)
+        manifest_path = os.path.join(marker_dir, "manifest.json")
+        temporary_manifest = manifest_path + "." + uuid.uuid4().hex + ".tmp"
+        with open(temporary_manifest, "w") as f:
             json.dump(context, f)
             f.write("\n")
-        os.replace(temporary_path, context_path)
+        os.replace(temporary_manifest, manifest_path)
+        for species_name in species_names:
+            context_path = os.path.join(root, species_name, ".species_cleanup.json")
+            temporary_path = context_path + "." + uuid.uuid4().hex + ".tmp"
+            with open(temporary_path, "w") as f:
+                json.dump(context, f)
+                f.write("\n")
+            os.replace(temporary_path, context_path)
     return run_id
 
 
@@ -177,10 +203,11 @@ def clear_species_complete(species_name, run_id=None):
     if species_name not in context["species"]:
         raise ValueError(f"Unexpected species cleanup marker: {species_name!r}")
     marker = os.path.join("..", ".species_cleanup", context["run_id"], species_name + ".done")
-    try:
-        os.unlink(marker)
-    except FileNotFoundError:
-        pass
+    with species_cleanup_lock(os.path.abspath("..")):
+        try:
+            os.unlink(marker)
+        except FileNotFoundError:
+            pass
 
 
 def has_shared_software_context():
